@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { sendToPlayer, notifySteal } from '../utils/websocket';
+import { acquireLock, releaseLock, updateLeaderboard } from '../utils/redis';
 
 export class FollowService {
   // 关注某人
@@ -196,92 +197,110 @@ export class FollowService {
   }
 
   // 偷菜 - 只有好友（互相关注）才能偷
+  // [NEW] 增加了分布式锁和排行榜更新
   static async stealCrop(stealerId: string, victimId: string, position: number) {
     if (stealerId === victimId) {
       throw new Error('Cannot steal from yourself');
     }
 
-    // 验证是否是好友（互相关注）
-    const isMutual = await this.checkMutualFollow(stealerId, victimId);
-    if (!isMutual) {
-      throw new Error('Not mutual followers (not friends)');
+    // 1. 定义锁的 Key：锁定特定受害者的特定地块位置，防止多人同时偷同一块地
+    const lockKey = `lock:steal:${victimId}:${position}`;
+
+    // 2. 尝试获取锁 (3秒过期)
+    const hasLock = await acquireLock(lockKey, 3);
+    if (!hasLock) {
+      throw new Error('Too busy! Someone is already interacting with this land.');
     }
 
-    // 获取土地信息
-    const land = await prisma.land.findUnique({
-      where: { playerId_position: { playerId: victimId, position } }
-    });
-
-    if (!land || land.status !== 'harvestable') {
-      throw new Error('Nothing to steal');
-    }
-
-    // 检查是否已经偷过太多次
-    if (land.stolenCount >= 3) {
-      throw new Error('This crop has been stolen too many times');
-    }
-
-    // 检查今天是否已经偷过这块地
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const existingSteal = await prisma.stealRecord.findFirst({
-      where: {
-        stealerId,
-        victimId,
-        landPos: position,
-        createdAt: { gte: today }
+    try {
+      // 验证是否是好友（互相关注）
+      const isMutual = await this.checkMutualFollow(stealerId, victimId);
+      if (!isMutual) {
+        throw new Error('Not mutual followers (not friends)');
       }
-    });
 
-    if (existingSteal) {
-      throw new Error('Already stolen from this land today');
+      // 获取土地信息
+      const land = await prisma.land.findUnique({
+        where: { playerId_position: { playerId: victimId, position } }
+      });
+
+      if (!land || land.status !== 'harvestable') {
+        throw new Error('Nothing to steal');
+      }
+
+      // 检查是否已经偷过太多次
+      if (land.stolenCount >= 3) {
+        throw new Error('This crop has been stolen too many times');
+      }
+
+      // 检查今天是否已经偷过这块地
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const existingSteal = await prisma.stealRecord.findFirst({
+        where: {
+          stealerId,
+          victimId,
+          landPos: position,
+          createdAt: { gte: today }
+        }
+      });
+
+      if (existingSteal) {
+        throw new Error('Already stolen from this land today');
+      }
+
+      // 获取作物信息
+      const crop = await prisma.crop.findUnique({ where: { type: land.cropType! } });
+      if (!crop) throw new Error('Crop not found');
+
+      // 计算偷取数量（偷取 1 个）
+      const stealAmount = 1;
+      const goldValue = crop.sellPrice * stealAmount;
+
+      // 更新偷取次数
+      await prisma.land.update({
+        where: { id: land.id },
+        data: { stolenCount: { increment: 1 } }
+      });
+
+      // 给偷菜者增加金币
+      const updatedStealer = await prisma.player.update({
+        where: { id: stealerId },
+        data: { gold: { increment: goldValue } }
+      });
+
+      // 创建偷菜记录
+      const stealer = await prisma.player.findUnique({ where: { id: stealerId }, select: { name: true } });
+      await prisma.stealRecord.create({
+        data: {
+          stealerId,
+          victimId,
+          landPos: position,
+          cropType: land.cropType!,
+          amount: stealAmount,
+          goldValue
+        }
+      });
+
+      // 发送通知
+      await notifySteal(victimId, stealer?.name || 'Unknown', crop.name, stealAmount, position);
+
+      // [NEW] 更新 Redis 金币排行榜
+      updateLeaderboard('gold', stealerId, updatedStealer.gold).catch(console.error);
+
+      return {
+        success: true,
+        stolen: {
+          cropType: land.cropType,
+          cropName: crop.name,
+          amount: stealAmount,
+          goldValue
+        }
+      };
+    } finally {
+      // 3. 释放锁
+      await releaseLock(lockKey);
     }
-
-    // 获取作物信息
-    const crop = await prisma.crop.findUnique({ where: { type: land.cropType! } });
-    if (!crop) throw new Error('Crop not found');
-
-    // 计算偷取数量（偷取 1 个）
-    const stealAmount = 1;
-    const goldValue = crop.sellPrice * stealAmount;
-
-    // 更新偷取次数
-    await prisma.land.update({
-      where: { id: land.id },
-      data: { stolenCount: { increment: 1 } }
-    });
-
-    // 给偷菜者增加金币
-    await prisma.player.update({
-      where: { id: stealerId },
-      data: { gold: { increment: goldValue } }
-    });
-
-    // 创建偷菜记录
-    const stealer = await prisma.player.findUnique({ where: { id: stealerId }, select: { name: true } });
-    await prisma.stealRecord.create({
-      data: {
-        stealerId,
-        victimId,
-        landPos: position,
-        cropType: land.cropType!,
-        amount: stealAmount,
-        goldValue
-      }
-    });
-
-    // 发送通知
-    await notifySteal(victimId, stealer?.name || 'Unknown', crop.name, stealAmount, position);
-
-    return {
-      success: true,
-      stolen: {
-        cropType: land.cropType,
-        cropName: crop.name,
-        amount: stealAmount,
-        goldValue
-      }
-    };
   }
 
   // 获取偷菜记录

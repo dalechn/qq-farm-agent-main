@@ -92,11 +92,24 @@ export interface ActionLog {
   timestamp: string;
 }
 
+// [新增] 分页响应接口结构
+export interface PaginatedPlayers {
+  data: Player[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
 // ==================== 公开 API ====================
 
 export const publicApi = {
-  // 获取所有玩家
-  getPlayers: () => request<Player[]>('/players'),
+  // [修改] 获取所有玩家 - 改为支持分页和排行榜
+  getPlayers: (page = 1, limit = 20) => 
+    request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
 
   // 获取作物列表
   getCrops: () => request<Crop[]>('/crops'),

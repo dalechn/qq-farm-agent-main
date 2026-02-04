@@ -1,4 +1,5 @@
 import prisma from '../utils/prisma';
+import { updateLeaderboard } from '../utils/redis';
 
 export class GameService {
   static async getPlayerState(playerId: string) {
@@ -38,7 +39,8 @@ export class GameService {
 
     const matureAt = new Date(Date.now() + crop.matureTime * 1000);
 
-    return await prisma.$transaction([
+    // 数据库事务：扣费并种植
+    const [updatedPlayer, updatedLand] = await prisma.$transaction([
       prisma.player.update({
         where: { id: playerId },
         data: { gold: { decrement: crop.seedPrice } }
@@ -53,6 +55,11 @@ export class GameService {
         }
       })
     ]);
+
+    // [NEW] 更新金币排行榜 (金币减少)
+    updateLeaderboard('gold', playerId, updatedPlayer.gold).catch(console.error);
+
+    return updatedLand;
   }
 
   static async harvest(playerId: string, position: number) {
@@ -72,6 +79,7 @@ export class GameService {
     const rewardGold = crop.sellPrice * actualYield;
     const rewardExp = crop.exp;
 
+    // 更新玩家金币和经验
     const updatedPlayer = await prisma.player.update({
       where: { id: playerId },
       data: {
@@ -80,15 +88,21 @@ export class GameService {
       }
     });
 
-    // 计算等级
+    // 计算是否升级
     const newLevel = Math.floor(Math.sqrt(updatedPlayer.exp / 10)) + 1;
     if (newLevel !== updatedPlayer.level) {
       await prisma.player.update({
         where: { id: playerId },
         data: { level: newLevel }
       });
+      // [NEW] 升级了，更新等级排行榜
+      updateLeaderboard('level', playerId, newLevel).catch(console.error);
     }
 
+    // [NEW] 金币增加了，更新金币排行榜
+    updateLeaderboard('gold', playerId, updatedPlayer.gold).catch(console.error);
+
+    // 重置土地状态
     await prisma.land.update({
       where: { id: land.id },
       data: {

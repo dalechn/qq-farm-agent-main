@@ -41,13 +41,36 @@ app.post('/api/player', async (req, res) => {
   }
 });
 
-// 获取所有玩家（前端展示用）
+// [MODIFIED] 获取玩家列表（支持分页排行榜）
 app.get('/api/players', async (req, res) => {
-  const players = await prisma.player.findMany({
-    include: { lands: { orderBy: { position: 'asc' } } },
-    orderBy: { level: 'desc' }
-  });
-  res.json(players);
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const skip = (page - 1) * limit;
+
+  try {
+    const [players, total] = await prisma.$transaction([
+      prisma.player.findMany({
+        include: { lands: { orderBy: { position: 'asc' } } },
+        orderBy: { gold: 'desc' }, // 改为按金币降序（排行榜）
+        skip,
+        take: limit
+      }),
+      prisma.player.count()
+    ]);
+
+    res.json({
+      data: players,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: skip + players.length < total
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch players' });
+  }
 });
 
 // 获取作物列表
@@ -132,8 +155,8 @@ app.post('/api/notifications/read', authenticateApiKey, async (req: any, res) =>
 });
 
 // ==================== 关注系统路由 (Follower/Following) ====================
+// ... (保留 FollowService 相关路由，无需修改) ...
 
-// 关注某人
 app.post('/api/follow', authenticateApiKey, async (req: any, res) => {
   const { targetId } = req.body;
   try {
@@ -157,7 +180,6 @@ app.post('/api/follow', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// 取消关注
 app.post('/api/unfollow', authenticateApiKey, async (req: any, res) => {
   const { targetId } = req.body;
   try {
@@ -168,7 +190,6 @@ app.post('/api/unfollow', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// 获取我关注的人
 app.get('/api/following', authenticateApiKey, async (req: any, res) => {
   try {
     const following = await FollowService.getFollowing(req.playerId);
@@ -178,7 +199,6 @@ app.get('/api/following', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// 获取关注我的人
 app.get('/api/followers', authenticateApiKey, async (req: any, res) => {
   try {
     const followers = await FollowService.getFollowers(req.playerId);
@@ -188,7 +208,6 @@ app.get('/api/followers', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// 获取好友列表（互相关注的人）
 app.get('/api/friends', authenticateApiKey, async (req: any, res) => {
   try {
     const friends = await FollowService.getFriends(req.playerId);
@@ -198,7 +217,6 @@ app.get('/api/friends', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// 获取好友农场（需要互相关注）
 app.get('/api/friends/:friendId/farm', authenticateApiKey, async (req: any, res) => {
   try {
     const farm = await FollowService.getFriendFarm(req.playerId, req.params.friendId);
@@ -208,7 +226,6 @@ app.get('/api/friends/:friendId/farm', authenticateApiKey, async (req: any, res)
   }
 });
 
-// 偷菜（需要互相关注）
 app.post('/api/steal', authenticateApiKey, async (req: any, res) => {
   const { victimId, position } = req.body;
   try {
@@ -232,7 +249,6 @@ app.post('/api/steal', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// 获取偷菜记录
 app.get('/api/steal/history', authenticateApiKey, async (req: any, res) => {
   const type = (req.query.type as 'stolen' | 'stealer') || 'stealer';
   try {
@@ -250,7 +266,7 @@ const PORT = process.env.PORT || 3001;
 async function start() {
   await connectRedis();
   
-  // 初始化作物数据（如果不存在）
+  // 初始化作物数据
   const cropCount = await prisma.crop.count();
   if (cropCount === 0) {
     await prisma.crop.createMany({
@@ -265,10 +281,7 @@ async function start() {
     console.log('🌱 Default crops initialized');
   }
 
-  // 创建 HTTP 服务器
   const server = createServer(app);
-  
-  // 设置 WebSocket
   setupWebSocket(server);
 
   server.listen(PORT, () => {

@@ -1,8 +1,3 @@
-/**
- * WebSocket Hook
- * 实时接收后端推送的消息
- */
-
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws';
@@ -35,9 +30,12 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const connect = useCallback(() => {
-    if (!apiKey) return;
+    // 修改：移除 if (!apiKey) return; 的限制
+    // 如果有 apiKey 就拼上去，没有就作为游客连接
+    const url = apiKey ? `${WS_BASE}?apiKey=${apiKey}` : WS_BASE;
+    
+    console.log('🔌 Connecting to WebSocket:', url); // Debug log
 
-    const url = `${WS_BASE}?apiKey=${apiKey}`;
     const ws = new WebSocket(url);
 
     ws.onopen = () => {
@@ -46,6 +44,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       onConnect?.();
     };
 
+    // ... 其余保持不变 ...
     ws.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data) as WebSocketMessage;
@@ -61,7 +60,6 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
       setIsConnected(false);
       onDisconnect?.();
 
-      // 自动重连
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
@@ -76,17 +74,18 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     };
 
     wsRef.current = ws;
-  }, [apiKey, onMessage, onConnect, onDisconnect, reconnectInterval]);
+  }, [apiKey, onMessage, onConnect, onDisconnect, reconnectInterval]); // 依赖项保持不变
 
+  // ... 保持 disconnect 和 send 不变 ...
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
   }, []);
 
   const send = useCallback((message: object) => {
