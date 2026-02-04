@@ -6,7 +6,7 @@ import { authenticateApiKey } from './middleware/auth';
 import { GameService } from './services/GameService';
 import { FollowService } from './services/FollowService';
 import prisma from './utils/prisma';
-import { connectRedis } from './utils/redis';
+import { connectRedis, redisClient } from './utils/redis';
 import { setupWebSocket, broadcast } from './utils/websocket';
 
 dotenv.config();
@@ -17,31 +17,81 @@ app.use(express.json());
 
 // ==================== 公开路由 ====================
 
-// 创建玩家
+// [新增] 根据名字获取玩家信息 (用于搜索和 URL 访问)
+app.get('/api/users/:name', async (req, res) => {
+  const name = req.params.name;
+  try {
+    const player = await prisma.player.findFirst({
+      where: { name: name }, // 精确匹配名字
+      include: {
+        lands: { orderBy: { position: 'asc' } },
+        _count: {
+          select: { followers: true, following: true }
+        }
+      }
+    });
+    
+    if (!player) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
+    res.json(player);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch player' });
+  }
+});
+
+// [修改] 创建玩家 (增加头像自动生成和推特字段)
 app.post('/api/player', async (req, res) => {
-  const { name } = req.body;
+  const { name, twitter } = req.body;
   if (!name) return res.status(400).json({ error: 'Name is required' });
+
+  // 自动生成 RoboHash 头像 URL
+  const avatar = `https://robohash.org/${encodeURIComponent(name)}.png?set=set1`;
 
   try {
     const player = await prisma.player.create({
       data: {
         name,
+        avatar,    // 保存头像
+        twitter,   // 保存推特 (可选)
         lands: {
           create: Array.from({ length: 9 }).map((_, i) => ({ position: i }))
         }
       }
     });
     
-    // 广播新玩家加入
-    broadcast({ type: 'player_joined', player: { id: player.id, name: player.name, level: player.level } });
+    // 广播新玩家加入 (包含头像)
+    broadcast({ 
+      type: 'player_joined', 
+      player: { 
+        id: player.id, 
+        name: player.name, 
+        level: player.level,
+        avatar: player.avatar 
+      } 
+    });
     
     res.status(201).json(player);
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Failed to create player' });
   }
 });
 
-// [MODIFIED] 获取玩家列表（支持分页排行榜）
+// [新增] 获取最新 100 条活动日志 (之前讨论的功能)
+app.get('/api/logs', async (req, res) => {
+  try {
+    const logsRaw = await redisClient.lRange('farm:global_logs', 0, -1);
+    const logs = logsRaw.map(log => JSON.parse(log));
+    res.json(logs);
+  } catch (error) {
+    console.error('Fetch logs error:', error);
+    res.status(500).json({ error: 'Failed to fetch logs' });
+  }
+});
+
+// 获取玩家列表（支持分页排行榜）
 app.get('/api/players', async (req, res) => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
@@ -50,8 +100,14 @@ app.get('/api/players', async (req, res) => {
   try {
     const [players, total] = await prisma.$transaction([
       prisma.player.findMany({
-        include: { lands: { orderBy: { position: 'asc' } } },
-        orderBy: { gold: 'desc' }, // 改为按金币降序（排行榜）
+        include: { 
+          lands: { orderBy: { position: 'asc' } },
+          // [新增] 包含关注和粉丝的数量统计
+          _count: {
+            select: { followers: true, following: true }
+          }
+        },
+        orderBy: { gold: 'desc' },
         skip,
         take: limit
       }),
@@ -154,8 +210,7 @@ app.post('/api/notifications/read', authenticateApiKey, async (req: any, res) =>
   res.json({ success: true });
 });
 
-// ==================== 关注系统路由 (Follower/Following) ====================
-// ... (保留 FollowService 相关路由，无需修改) ...
+// ==================== 关注系统路由 ====================
 
 app.post('/api/follow', authenticateApiKey, async (req: any, res) => {
   const { targetId } = req.body;

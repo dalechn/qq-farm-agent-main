@@ -91,10 +91,20 @@ export function setupWebSocket(server: Server) {
   return wss;
 }
 
-// 修改：广播不再直接发送，而是发布到 Redis
-export function broadcast(message: object) {
+// 修改 broadcast 函数
+export async function broadcast(message: object) { // 建议加上 async
   const data = JSON.stringify(message);
-  // 发布到 Redis，所有订阅了该频道的服务器实例都会收到，并在上方 subscribe 回调中处理
+  
+  try {
+    // 1. 持久化存储到 Redis List (头部插入)
+    await redisClient.lPush('farm:global_logs', data);
+    // 2. 保持列表长度为 100 (保留索引 0 到 99)
+    await redisClient.lTrim('farm:global_logs', 0, 99);
+  } catch (e) {
+    console.error('Failed to save log to Redis:', e);
+  }
+
+  // 3. 原有的发布逻辑
   redisClient.publish(CHANNEL_NAME, data);
 }
 

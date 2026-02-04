@@ -24,9 +24,12 @@ class FarmAgent:
         print(f"[{self.name}] {message}")
 
     def register(self):
-        """注册并获取 API Key"""
+        """注册并获取 API Key (Debug 版)"""
         try:
-            res = requests.post(f"{API_BASE}/player", json={"name": self.name})
+            url = f"{API_BASE}/player"
+            # print(f"正在请求: {url}") # 打开此行可调试 URL 是否正确
+            res = requests.post(url, json={"name": self.name})
+            
             if res.status_code in [200, 201]:
                 data = res.json()
                 self.player_id = data["id"]
@@ -35,7 +38,8 @@ class FarmAgent:
                 self.log(f"注册成功 (ID: {self.player_id[:4]}..)")
                 return True
             else:
-                self.log(f"注册失败: {res.text}")
+                # [关键] 打印状态码和详细错误响应
+                self.log(f"注册失败 [Status: {res.status_code}]: {res.text}")
                 return False
         except Exception as e:
             self.log(f"连接错误: {e}")

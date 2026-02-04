@@ -70,19 +70,30 @@ export function useGameData(options: UseGameDataOptions = {}) {
     }
   }, []);
 
+  // [新增] 获取历史日志
+  const fetchLogs = useCallback(async () => {
+    try {
+      // 假设 publicApi 已添加 getLogs 方法
+      const historyLogs = await publicApi.getLogs();
+      setLogs(historyLogs);
+    } catch (err: any) {
+      console.error('Failed to fetch logs:', err);
+    }
+  }, []);
+
   // 初始加载
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
-      await Promise.all([fetchPlayers(1), fetchCrops()]);
+      // 并行请求：玩家列表、作物列表、历史日志
+      await Promise.all([fetchPlayers(1), fetchCrops(), fetchLogs()]);
       setIsLoading(false);
     };
     init();
-  }, [fetchPlayers, fetchCrops]);
+  }, [fetchPlayers, fetchCrops, fetchLogs]);
 
   // WebSocket 消息处理
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
-    // ... (WebSocket 逻辑保持不变)
     switch (message.type) {
       case 'action':
         setLogs((prev) => [
@@ -94,7 +105,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
             details: message.details,
             timestamp: message.timestamp,
           },
-          ...prev.slice(0, 49),
+          ...prev.slice(0, 99), // 保持最新的 100 条 (与后端 Redis 限制一致)
         ]);
         break;
       case 'player_joined':
@@ -133,8 +144,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
     hasMore,
     error,
     isConnected,
-    refresh: () => { setPage(1); fetchPlayers(1); },
+    refresh: () => { setPage(1); fetchPlayers(1); fetchLogs(); }, // 刷新时也重新获取日志
     loadMorePlayers,
   };
 }
-

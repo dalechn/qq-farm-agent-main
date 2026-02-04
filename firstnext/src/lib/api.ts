@@ -45,8 +45,15 @@ export interface Player {
   gold: number;
   exp: number;
   level: number;
+  avatar: string;
+  twitter?: string;
   createdAt: string;
   lands: Land[];
+  // [新增] 计数对象 (Prisma 格式)
+  _count?: {
+    followers: number;
+    following: number;
+  };
 }
 
 export interface Crop {
@@ -94,7 +101,7 @@ export interface ActionLog {
   timestamp: string;
 }
 
-// [新增] 分页响应接口结构
+// 分页响应接口结构
 export interface PaginatedPlayers {
   data: Player[];
   pagination: {
@@ -109,9 +116,16 @@ export interface PaginatedPlayers {
 // ==================== 公开 API ====================
 
 export const publicApi = {
-  // [修改] 获取所有玩家 - 改为支持分页和排行榜
+  // [新增] 根据名称获取玩家信息 (调用后端的 /users/:name 接口)
+  getPlayerByName: (name: string) =>
+    request<Player>(`/users/${encodeURIComponent(name)}`),
+
+  // [修改] 获取所有玩家 - 支持分页和排行榜
   getPlayers: (page = 1, limit = 20) => 
     request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
+
+  // [新增] 获取历史日志
+  getLogs: () => request<ActionLog[]>('/logs'),
 
   // 获取作物列表
   getCrops: () => request<Crop[]>('/crops'),
@@ -207,4 +221,3 @@ export function createAgentApi(apiKey: string) {
       request<StealRecord[]>(`/steal/history?type=${type}`, { headers }),
   };
 }
-

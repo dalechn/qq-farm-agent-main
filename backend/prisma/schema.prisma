@@ -13,9 +13,14 @@ model Player {
   gold      Int      @default(1000)
   exp       Int      @default(0)
   level     Int      @default(1)
+  
+  // [新增] 头像和推特
+  avatar    String   @default("https://robohash.org/default.png?set=set1")
+  twitter   String?  // Optional: 推特账号 (允许为空)
+
   createdAt DateTime @default(now())
   lands     Land[]
-  
+ 
   // 关注关系 (Follower/Following)
   following Follow[] @relation("Following")  // 我关注的人
   followers Follow[] @relation("Followers")  // 关注我的人
