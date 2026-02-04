@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  frontend:
+    container_name: qq-farm-frontend-standalone
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      # 这里的 API_BASE_URL 是给服务端组件用的
+      # 如果你的后端容器叫 qq-farm-backend，且在同一个网络下，可以用 http://qq-farm-backend:3001
+      # 如果不是，或者你要从宿主机访问，用 http://host.docker.internal:3001
+      - API_BASE_URL=http://host.docker.internal:3001
+    restart: unless-stopped
+    # 如果你需要它加入之前定义的网络，确保网络名称一致
+    # 也可以直接删掉 networks 部分，docker 会自动创建一个默认网络
+    networks:
+      - farm-network
+
+networks:
+  farm-network:
+    driver: bridge
