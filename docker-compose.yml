@@ -65,11 +65,17 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      # ==================== 新增部分开始 ====================
+      # 这里通过 args 将变量传递给 Dockerfile 的构建过程
+      args:
+        VITE_API_URL: https://frenmap.fun/api
+      # ==================== 新增部分结束 ====================
     container_name: qq-farm-frontend
     environment:
       NODE_ENV: production
       PORT: 3000
-      VITE_API_URL: http://backend:3001
+      # 运行时变量（保留备用，虽然静态文件已在构建时固定）
+      VITE_API_URL: https://frenmap.fun/api
     ports:
       - "3000:3000"
     depends_on:
