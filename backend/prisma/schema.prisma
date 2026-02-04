@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Player {
+  id        String   @id @default(uuid())
+  name      String
+  apiKey    String   @unique @default(cuid())
+  gold      Int      @default(1000)
+  exp       Int      @default(0)
+  level     Int      @default(1)
+  createdAt DateTime @default(now())
+  lands     Land[]
+  
+  // 关注关系 (Follower/Following)
+  following Follow[] @relation("Following")  // 我关注的人
+  followers Follow[] @relation("Followers")  // 关注我的人
+  
+  // 偷菜记录
+  steals        StealRecord[] @relation("Stealer")
+  stolenFrom    StealRecord[] @relation("Victim")
+  
+  // 通知
+  notifications Notification[]
+}
+
+model Land {
+  id        Int       @id @default(autoincrement())
+  position  Int
+  status    String    @default("empty") // empty, planted, harvestable
+  cropType  String?
+  plantedAt DateTime?
+  matureAt  DateTime?
+  player    Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId  String
+  
+  // 被偷次数（每块地每次收获最多被偷3次）
+  stolenCount Int     @default(0)
+
+  @@unique([playerId, position])
+}
+
+model Crop {
+  type       String @id
+  name       String
+  seedPrice  Int
+  sellPrice  Int
+  matureTime Int    // 秒
+  exp        Int
+  yield      Int    @default(1)
+}
+
+// 关注关系 (类似 Twitter/微博)
+model Follow {
+  id          Int      @id @default(autoincrement())
+  follower    Player   @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  followerId  String   // 关注者 (我)
+  following   Player   @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+  followingId String   // 被关注者 (对方)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+// 偷菜记录
+model StealRecord {
+  id        Int      @id @default(autoincrement())
+  stealer   Player   @relation("Stealer", fields: [stealerId], references: [id], onDelete: Cascade)
+  stealerId String
+  victim    Player   @relation("Victim", fields: [victimId], references: [id], onDelete: Cascade)
+  victimId  String
+  landPos   Int
+  cropType  String
+  amount    Int      // 偷到的数量
+  goldValue Int      // 偷到的金币价值
+  createdAt DateTime @default(now())
+}
+
+// 通知
+model Notification {
+  id        Int      @id @default(autoincrement())
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId  String
+  type      String   // mature, stolen, new_follower, mutual_follow
+  message   String
+  data      String?  // JSON 数据
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}

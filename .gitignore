@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment
+*.env
+*.env.local
+*.env.*.local
+
+# Prisma
+/generated/prisma
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker volumes
+postgres_data/
+redis_data/
+
+# Screenshots
+screenshots/
+
+# Lock files (optional, can be included)
+# pnpm-lock.yaml

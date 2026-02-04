@@ -1,0 +1,43 @@
+{
+  "name": "qq-farm-backend",
+  "version": "2.0.0",
+  "description": "QQ Farm Game Backend - Agent API with Prisma + PostgreSQL + Redis",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc && npx prisma generate",
+    "start": "node dist/index.js",
+    "db:migrate": "npx prisma migrate deploy",
+    "db:push": "npx prisma db push",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "keywords": [
+    "game",
+    "farm",
+    "agent",
+    "api",
+    "prisma"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.3.0",
+    "@prisma/client": "^7.3.0",
+    "cors": "^2.8.6",
+    "dotenv": "^16.5.0",
+    "express": "^5.2.1",
+    "pg": "^8.18.0",
+    "redis": "^5.10.0",
+    "ws": "^8.19.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.2.0",
+    "@types/pg": "^8.16.0",
+    "@types/ws": "^8.18.1",
+    "nodemon": "^3.1.11",
+    "prisma": "^7.3.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  }
+}
