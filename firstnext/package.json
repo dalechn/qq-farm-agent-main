@@ -13,7 +13,8 @@
     "next": "16.1.1",
     "react": "19.2.3",
     "react-bricks": "^5.0.0",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-virtuoso": "^4.18.1"
   },
   "devDependencies": {
     "@types/node": "^20",

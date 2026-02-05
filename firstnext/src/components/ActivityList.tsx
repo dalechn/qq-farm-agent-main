@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { 
-  Activity, 
-} from "lucide-react";
+import { Virtuoso } from "react-virtuoso"; 
+import { Loader2 } from "lucide-react";
 import { type ActionLog } from "@/lib/api";
 
 export function getActionColor(action: string) {
@@ -14,8 +13,21 @@ export function getActionColor(action: string) {
   return map[action] || "text-stone-400";
 }
 
-export function ActivityList({ logs, onPlayerClick }: { logs: any[], onPlayerClick?: (name: string) => void }) {
-  // [新增] 状态：当前展开的日志 ID
+interface ActivityListProps {
+  logs: ActionLog[];
+  onPlayerClick?: (name: string) => void;
+  hasMore: boolean;
+  onLoadMore: () => void;
+  isLoadingMore: boolean;
+}
+
+export function ActivityList({ 
+  logs, 
+  onPlayerClick, 
+  hasMore, 
+  onLoadMore, 
+  isLoadingMore 
+}: ActivityListProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (logs.length === 0) {
@@ -23,15 +35,39 @@ export function ActivityList({ logs, onPlayerClick }: { logs: any[], onPlayerCli
   }
 
   return (
-    <div className="space-y-0.5 font-mono">
-      {logs.map((log) => {
+    <Virtuoso
+      // [修改点] 添加 custom-scrollbar 类名
+      className="custom-scrollbar"
+      style={{ height: "100%" }} 
+      data={logs}
+      endReached={() => {
+        if (hasMore && !isLoadingMore) {
+          onLoadMore();
+        }
+      }}
+      overscan={200} 
+      
+      components={{
+        Footer: () => (
+          <div className="py-4 flex justify-center w-full min-h-[40px]">
+            {isLoadingMore && (
+              <div className="flex items-center gap-2 text-stone-500 text-[10px]">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>LOADING...</span>
+              </div>
+            )}
+            {!hasMore && logs.length > 0 && (
+              <span className="text-stone-700 text-[10px]">// END OF LOGS //</span>
+            )}
+          </div>
+        )
+      }}
+
+      itemContent={(index, log) => {
         const isExpanded = expandedId === log.id;
         
         return (
           <div 
-            key={log.id} 
-            // [修改] 点击行切换展开状态
-            // 样式调整：展开时背景稍微变亮，并允许换行
             onClick={() => setExpandedId(isExpanded ? null : log.id)}
             className={`
               p-3 text-xs border-b border-stone-800/50 transition-all duration-200 flex flex-col gap-1 cursor-pointer group
@@ -39,21 +75,21 @@ export function ActivityList({ logs, onPlayerClick }: { logs: any[], onPlayerCli
             `}
           >
             <div className="flex justify-between items-center opacity-60 text-[10px]">
-              <span className="group-hover:text-stone-300 transition-colors">{log.time}</span>
+              <span className="group-hover:text-stone-300 transition-colors">
+                {new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
               <span className={`font-bold ${getActionColor(log.action)} bg-stone-950/50 px-1 rounded`}>{log.action}</span>
             </div>
             
-            {/* [修改] 文本区域：根据状态决定是否 truncate */}
             <div className={`text-stone-400 ${isExpanded ? 'whitespace-normal break-words' : 'truncate'}`}>
               <span 
                 className="text-orange-500 font-bold mr-2 hover:underline hover:text-orange-400 relative z-10"
                 onClick={(e) => {
-                  // [关键] 阻止冒泡，防止触发行的展开点击
                   e.stopPropagation();
-                  if (onPlayerClick) onPlayerClick(log.player);
+                  if (onPlayerClick) onPlayerClick(log.playerName);
                 }}
               >
-                {log.player}
+                {log.playerName}
               </span>
               <span className="text-stone-500 group-hover:text-stone-300 transition-colors">
                 {log.details}
@@ -61,7 +97,7 @@ export function ActivityList({ logs, onPlayerClick }: { logs: any[], onPlayerCli
             </div>
           </div>
         );
-      })}
-    </div>
+      }}
+    />
   );
 }

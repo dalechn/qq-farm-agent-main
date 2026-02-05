@@ -3,15 +3,36 @@ import {
     Loader2, 
     Leaf, 
     Coins, 
-    Twitter 
+    Twitter,
+    ArrowLeft
   } from "lucide-react";
+  import { useRouter } from "next/navigation";
   import { type Player } from "@/lib/api";
   import { LandTile } from "@/components/LandTile";
   
   // 辅助组件：面板标题
-  function PanelHeader({ title, icon: Icon }: { title: string, icon: any }) {
+  function PanelHeader({ 
+    title, 
+    icon: Icon, 
+    showBack, 
+    onBack 
+  }: { 
+    title: string, 
+    icon: any, 
+    showBack?: boolean, 
+    onBack?: () => void 
+  }) {
     return (
       <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center px-3 gap-2 select-none">
+        {/* [新增] 移动端返回按钮 */}
+        {showBack && (
+          <button 
+            onClick={onBack} 
+            className="mr-1 text-stone-400 hover:text-white lg:hidden p-1 hover:bg-stone-700 rounded-sm transition-colors"
+          >
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+        )}
         <Icon className="w-4 h-4 text-stone-400" />
         <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
       </div>
@@ -41,12 +62,18 @@ import {
     isPlayerLoading, 
     showOnMobile 
   }: FarmViewportProps) {
-    
+    const router = useRouter();
     const isLoading = isSearching || isPlayerLoading;
   
     return (
       <section className={`flex-1 flex flex-col bg-[#292524] min-w-0 relative ${!showOnMobile ? 'hidden lg:flex' : 'flex'}`}>
-        <PanelHeader title="VIEWPORT" icon={Sprout} />
+        {/* [修改] 传入返回逻辑 */}
+        <PanelHeader 
+          title="VIEWPORT" 
+          icon={Sprout} 
+          showBack={showOnMobile}
+          onBack={() => router.push('/')}
+        />
   
         {isLoading ? (
            <div className="h-full flex flex-col items-center justify-center text-stone-600 font-mono bg-[#1c1917] animate-pulse">

@@ -6,26 +6,42 @@ import { KEY_GLOBAL_LOGS, KEY_PLAYER_LOGS_PREFIX } from '../config/redis-keys';
 
 const router: Router = Router();
 
-// [修改] Key 定义已迁移到 config/redis-keys.ts
-
-// 获取日志 (支持 ?playerId=xxx 筛选)
+// 获取日志 (支持 ?playerId=xxx 筛选，以及分页 ?page=1&limit=50)
 router.get('/logs', async (req, res) => {
   const playerId = req.query.playerId as string;
-  const limit = 100;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 50;
+  
+  // 计算 Redis zRange 的索引范围
+  const start = (page - 1) * limit;
+  const end = start + limit - 1;
 
   try {
     let logsRaw;
+    let total = 0;
+
     if (playerId) {
-      // [修改] 使用新的 Key 读取玩家日志
       const playerKey = `${KEY_PLAYER_LOGS_PREFIX}${playerId}`;
-      logsRaw = await redisClient.zRange(playerKey, 0, limit - 1, { REV: true });
+      total = await redisClient.zCard(playerKey);
+      // REV: true 表示从最新的开始拿 (降序)
+      logsRaw = await redisClient.zRange(playerKey, start, end, { REV: true });
     } else {
-      // [修改] 使用新的 Key 读取全局日志
-      logsRaw = await redisClient.zRange(KEY_GLOBAL_LOGS, 0, limit - 1, { REV: true });
+      total = await redisClient.zCard(KEY_GLOBAL_LOGS);
+      logsRaw = await redisClient.zRange(KEY_GLOBAL_LOGS, start, end, { REV: true });
     }
 
     const logs = logsRaw.map(log => JSON.parse(log));
-    res.json(logs);
+
+    // 返回标准分页结构
+    res.json({
+      data: logs,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore: end < total - 1 // 如果当前结束索引小于总数-1，说明后面还有
+      }
+    });
   } catch (error) {
     console.error('Fetch logs error:', error);
     res.status(500).json({ error: 'Failed to fetch logs' });

@@ -102,6 +102,17 @@ export interface ActionLog {
   timestamp: string;
 }
 
+// [新增] 日志分页响应结构
+export interface PaginatedLogs {
+  data: ActionLog[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+  };
+}
+
 // 分页响应接口结构
 export interface PaginatedPlayers {
   data: Player[];
@@ -125,9 +136,13 @@ export const publicApi = {
   getPlayers: (page = 1, limit = 20) => 
     request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
 
-  // [修改] 获取历史日志 - 支持筛选特定玩家
-  getLogs: (playerId?: string) => 
-    request<ActionLog[]>(playerId ? `/logs?playerId=${playerId}` : '/logs'),
+// [修改] 获取日志 - 支持分页
+getLogs: (playerId?: string, page = 1, limit = 50) => 
+  request<PaginatedLogs>(
+    playerId 
+      ? `/logs?playerId=${playerId}&page=${page}&limit=${limit}` 
+      : `/logs?page=${page}&limit=${limit}`
+  ),
 
   // 获取作物列表
   getCrops: () => request<Crop[]>('/crops'),
