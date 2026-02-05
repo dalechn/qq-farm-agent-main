@@ -1,16 +1,20 @@
+import { useRef } from "react";
+import { VirtuosoHandle } from "react-virtuoso"; 
 import { 
     X, 
     Activity,
     Globe,
     User,
-    Loader2
+    Loader2,
+    RotateCw 
   } from "lucide-react";
 import { ActivityList } from "./ActivityList";
+import { type ActionLog } from "@/lib/api";
   
 interface LogSidebarProps {
   isOpen: boolean;
   onClose: () => void;
-  logs: any[];
+  logs: ActionLog[];
   onPlayerClick?: (name: string) => void;
   activeTab: 'global' | 'agent';
   onTabChange: (tab: 'global' | 'agent') => void;
@@ -18,6 +22,8 @@ interface LogSidebarProps {
   hasMore: boolean;
   onLoadMore: () => void;
   isLoadingMore: boolean;
+  onRefresh: () => void;
+  isRefreshing: boolean;
 }
   
 export function LogSidebar({ 
@@ -30,9 +36,14 @@ export function LogSidebar({
   isLoading,
   hasMore,
   onLoadMore,
-  isLoadingMore
+  isLoadingMore,
+  onRefresh,
+  isRefreshing
 }: LogSidebarProps) {
   
+  // 移动端列表 Ref
+  const mobileListRef = useRef<VirtuosoHandle>(null);
+
   if (!isOpen) return null;
 
   return (
@@ -43,10 +54,25 @@ export function LogSidebar({
       />
       
       <div className="relative w-80 bg-stone-900 h-full border-l-4 border-stone-600 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
+        
         <div className="flex-none h-14 border-b-2 border-stone-600 flex items-center justify-between px-3 bg-stone-800 gap-2">
            <div className="flex items-center gap-2 flex-1">
              <Activity className="w-4 h-4 text-green-400" />
              <span className="font-bold text-xs text-white uppercase tracking-wider">SYSTEM LOG</span>
+             
+             {/* 移动端刷新按钮 */}
+             <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRefresh();
+                  // [修改] 瞬间跳回顶部 (behavior: 'auto')
+                  mobileListRef.current?.scrollToIndex({ index: 0, align: 'start', behavior: 'auto' });
+                }}
+                disabled={isRefreshing}
+                className="p-1.5 ml-1 hover:bg-stone-700 rounded-full transition-colors text-stone-400 hover:text-white active:bg-stone-600 focus:outline-none"
+             >
+                <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-orange-400' : ''}`} />
+             </button>
            </div>
            
            <div className="flex bg-stone-950 p-0.5 rounded-sm flex-none">
@@ -69,7 +95,6 @@ export function LogSidebar({
            </button>
         </div>
 
-        {/* 必须保留 flex-1 和 min-h-0 以供 Virtuoso 计算高度 */}
         <div className="flex-1 min-h-0 bg-stone-900 relative">
             {isLoading && logs.length === 0 ? (
               <div className="absolute inset-0 bg-stone-900/80 flex items-center justify-center z-10">
@@ -84,6 +109,7 @@ export function LogSidebar({
               </div>
             ) : (
               <ActivityList 
+                ref={mobileListRef} 
                 logs={logs} 
                 onPlayerClick={(name) => {
                   onClose(); 

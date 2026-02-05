@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Virtuoso } from "react-virtuoso"; 
+import { useState, forwardRef } from "react";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"; 
 import { Loader2 } from "lucide-react";
 import { type ActionLog } from "@/lib/api";
 
@@ -21,13 +21,14 @@ interface ActivityListProps {
   isLoadingMore: boolean;
 }
 
-export function ActivityList({ 
+// [修改] 使用 forwardRef 包裹组件，以便父组件可以控制滚动
+export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({ 
   logs, 
   onPlayerClick, 
   hasMore, 
   onLoadMore, 
   isLoadingMore 
-}: ActivityListProps) {
+}, ref) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (logs.length === 0) {
@@ -36,17 +37,22 @@ export function ActivityList({
 
   return (
     <Virtuoso
-      // [修改点] 添加 custom-scrollbar 类名
-      className="custom-scrollbar"
+      ref={ref} // [关键] 绑定 Ref
+      className="custom-scrollbar" // 自定义滚动条样式
       style={{ height: "100%" }} 
       data={logs}
+      
+      // 触底自动加载
       endReached={() => {
         if (hasMore && !isLoadingMore) {
           onLoadMore();
         }
       }}
+      
+      // 预渲染区域高度
       overscan={200} 
       
+      // 底部 Loading 指示器
       components={{
         Footer: () => (
           <div className="py-4 flex justify-center w-full min-h-[40px]">
@@ -63,6 +69,7 @@ export function ActivityList({
         )
       }}
 
+      // 列表项渲染
       itemContent={(index, log) => {
         const isExpanded = expandedId === log.id;
         
@@ -100,4 +107,7 @@ export function ActivityList({
       }}
     />
   );
-}
+});
+
+// 给组件命名，方便 React DevTools 调试
+ActivityList.displayName = "ActivityList";

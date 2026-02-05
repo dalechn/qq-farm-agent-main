@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { type VirtuosoHandle } from "react-virtuoso"; 
 import { 
   Activity,
   Loader2,
   Skull,
   Globe,
-  User
+  User,
+  RotateCw
 } from "lucide-react";
 import { useGame } from "@/context/GameContext"; 
 import { type Player, type ActionLog, publicApi } from "@/lib/api";
@@ -23,6 +25,9 @@ interface FarmDashboardProps {
 export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
   const router = useRouter();
   
+  // PC 端列表 Ref
+  const desktopListRef = useRef<VirtuosoHandle>(null);
+
   const { 
     players, 
     logs: globalLogs, 
@@ -32,6 +37,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
     loadMorePlayers,
     hasMoreLogs,
     loadMoreLogs,
+    refreshLogs, 
     isFetchingMoreLogs,
     error,
     isActivityOpen,
@@ -40,13 +46,12 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
   
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   const [isPlayerLoading, setIsPlayerLoading] = useState(false);
-
-  // 日志 Tab 状态
   const [activeLogTab, setActiveLogTab] = useState<'global' | 'agent'>('global');
   const [agentLogs, setAgentLogs] = useState<ActionLog[]>([]);
   const [isAgentLogsLoading, setIsAgentLogsLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // 处理初始用户
+  // 初始化用户
   useEffect(() => {
     if (initialUsername) {
       setIsPlayerLoading(true);
@@ -61,27 +66,51 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
     }
   }, [initialUsername]);
 
-  // 默认选中
+  // 默认选中第一个
   useEffect(() => {
     if (!initialUsername && !selectedPlayer && players.length > 0) {
       setSelectedPlayer(players[0]);
     }
   }, [players, selectedPlayer, initialUsername]);
 
-  // 获取 Agent 日志
+  // Agent 日志
+  const fetchAgentLogs = (playerId: string) => {
+    setIsAgentLogsLoading(true);
+    publicApi.getLogs(playerId)
+      .then(response => setAgentLogs(response.data)) 
+      .catch(err => console.error("Failed to fetch agent logs", err))
+      .finally(() => setIsAgentLogsLoading(false));
+  };
+
   useEffect(() => {
     if (activeLogTab === 'agent' && selectedPlayer) {
-      setIsAgentLogsLoading(true);
-      publicApi.getLogs(selectedPlayer.id)
-        .then(response => setAgentLogs(response.data)) 
-        .catch(err => console.error("Failed to fetch agent logs", err))
-        .finally(() => setIsAgentLogsLoading(false));
+      fetchAgentLogs(selectedPlayer.id);
     }
   }, [activeLogTab, selectedPlayer]);
 
-  // [删除] 原来的 IntersectionObserver 自动加载 useEffect 已经移除
+  // [修改] 刷新逻辑：使用 behavior: 'auto' 实现瞬跳
+  const handleRefreshLogs = async () => {
+    setIsRefreshing(true);
+    
+    // 瞬间跳转到顶部，不带动画
+    desktopListRef.current?.scrollToIndex({ index: 0, align: 'start', behavior: 'auto' });
 
-  // 切换玩家
+    const minDelay = new Promise(resolve => setTimeout(resolve, 300));
+    
+    try {
+      if (activeLogTab === 'global') {
+        refreshLogs(); 
+      } else if (activeLogTab === 'agent' && selectedPlayer) {
+        await publicApi.getLogs(selectedPlayer.id).then(res => setAgentLogs(res.data));
+      }
+    } catch (e) {
+      console.error("Refresh failed", e);
+    }
+
+    await minDelay;
+    setIsRefreshing(false);
+  };
+
   const switchPlayer = async (name: string) => {
     if (window.innerWidth < 1024) {
       router.push(`/u/${name}`);
@@ -111,10 +140,8 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
     switchPlayer(name);
   };
 
-  // 这里的 logs 是已经格式化好的 ActionLog 或者是原始数据
-  // 注意：ActivityList 现在接收原始的 ActionLog 类型更方便，或者你保持 format 逻辑
-  // 为了配合新的 ActivityList，这里直接使用原始 logs 即可，渲染逻辑已移入 ActivityList
   const currentLogs = activeLogTab === 'global' ? globalLogs : agentLogs;
+  const isCurrentLogLoading = activeLogTab === 'global' ? false : isAgentLogsLoading;
 
   if (isLoading && !selectedPlayer && players.length === 0) {
     return (
@@ -138,7 +165,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         </div>
       )}
 
-      {/* 1. 左侧：排行榜 */}
+      {/* 1. 排行榜 */}
       <Leaderboard 
         players={players}
         selectedPlayer={selectedPlayer}
@@ -149,7 +176,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         isHiddenOnMobile={!!initialUsername}
       />
 
-      {/* 2. 中间：农场详情 */}
+      {/* 2. 视口 */}
       <FarmViewport 
         selectedPlayer={selectedPlayer}
         isSearching={false}
@@ -157,12 +184,21 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         showOnMobile={!!initialUsername}
       />
 
-      {/* 3. 右侧：PC 端日志面板 */}
+      {/* 3. PC 端日志面板 */}
       <div className="hidden lg:flex lg:w-80 flex-none border-l-2 border-stone-700 flex-col bg-stone-900 h-full">
         <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center justify-between px-2 gap-2 select-none">
             <div className="flex items-center gap-2">
               <Activity className="w-4 h-4 text-stone-400" />
               <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono hidden xl:block">SYSTEM LOG</h2>
+              
+              <button 
+                onClick={handleRefreshLogs}
+                disabled={isRefreshing}
+                className="p-1 hover:bg-stone-700 rounded transition-colors text-stone-500 hover:text-white"
+                title="Refresh Logs"
+              >
+                <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-orange-400' : ''}`} />
+              </button>
             </div>
             
             <div className="flex bg-stone-950 p-0.5 rounded-sm">
@@ -181,9 +217,8 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
             </div>
         </div>
 
-        {/* 虚拟滚动容器 */}
         <div className="flex-1 min-h-0 bg-stone-900/50 relative">
-            {isAgentLogsLoading && activeLogTab === 'agent' && (
+            {isCurrentLogLoading && (
               <div className="absolute inset-0 bg-stone-900/80 flex items-center justify-center z-10">
                 <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />
               </div>
@@ -196,6 +231,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
               </div>
             ) : (
               <ActivityList 
+                ref={desktopListRef} 
                 logs={currentLogs} 
                 onPlayerClick={handleLogPlayerClick}
                 hasMore={activeLogTab === 'global' ? hasMoreLogs : false}
@@ -213,11 +249,13 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         logs={currentLogs} 
         activeTab={activeLogTab}
         onTabChange={setActiveLogTab}
-        isLoading={isAgentLogsLoading}
+        isLoading={isCurrentLogLoading}
         onPlayerClick={handleLogPlayerClick}
         hasMore={activeLogTab === 'global' ? hasMoreLogs : false}
         onLoadMore={loadMoreLogs}
         isLoadingMore={isFetchingMoreLogs}
+        onRefresh={handleRefreshLogs}
+        isRefreshing={isRefreshing}
       />
     </>
   );
