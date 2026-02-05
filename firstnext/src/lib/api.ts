@@ -93,6 +93,7 @@ export interface StealRecord {
 }
 
 export interface ActionLog {
+  id?: string; // [New] 后端 UUID
   type: string;
   action: string;
   playerId: string;
@@ -124,8 +125,9 @@ export const publicApi = {
   getPlayers: (page = 1, limit = 20) => 
     request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
 
-  // [新增] 获取历史日志
-  getLogs: () => request<ActionLog[]>('/logs'),
+  // [修改] 获取历史日志 - 支持筛选特定玩家
+  getLogs: (playerId?: string) => 
+    request<ActionLog[]>(playerId ? `/logs?playerId=${playerId}` : '/logs'),
 
   // 获取作物列表
   getCrops: () => request<Crop[]>('/crops'),

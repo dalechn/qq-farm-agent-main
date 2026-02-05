@@ -1,61 +1,35 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
+// [修改] 引入 useParams
+import { useRouter, useParams } from "next/navigation";
 import { 
-  Sprout, 
   Activity,
-  Users,
-  CheckCircle2,
   Loader2,
-  Wifi,
-  WifiOff,
   Skull,
-  Trophy,
-  Leaf,
-  Twitter,
-  Search,
-  Coins,
-  Gamepad2,
-  ShoppingBasket
+  Globe,
+  User
 } from "lucide-react";
 import { useGameData } from "@/hooks/useGameData";
-import { type Player, publicApi } from "@/lib/api";
-import { LandTile } from "@/components/LandTile";
+import { type Player, type ActionLog, publicApi } from "@/lib/api";
 import { ActivityList } from "@/components/ActivityList";
 import { ShopModal } from "@/components/ShopModal"; 
 import { LogSidebar } from "@/components/LogSidebar";
+import { GameHeader } from "@/components/GameHeader";
+import { Leaderboard } from "@/components/Leaderboard";
+import { FarmViewport } from "@/components/FarmViewport";
 
-// 像素风状态胶囊
-function MiniStat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
-  return (
-    <div className={`flex items-center gap-2 px-2 py-1 border border-b-2 border-r-2 border-black/20 ${bg}`}>
-      <span className="text-[8px] text-stone-900 font-bold uppercase tracking-wider">{label}</span>
-      <span className={`text-xs font-mono font-bold ${color} drop-shadow-sm`}>{value}</span>
-    </div>
-  );
-}
-
-// 通用面板标题栏
-function PanelHeader({ title, icon: Icon }: { title: string, icon: any }) {
-  return (
-    <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center px-3 gap-2 select-none">
-      <Icon className="w-4 h-4 text-stone-400" />
-      <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
-    </div>
-  );
-}
-
-interface FarmDashboardProps {
-  initialUsername?: string;
-}
-
-export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
+// [修改] 移除 initialUsername 属性，现在是自包含的
+export function FarmDashboard() {
   const router = useRouter();
+  // [新增] 直接从 URL 获取参数
+  const params = useParams();
+  const urlUsername = params?.username ? decodeURIComponent(params.username as string) : undefined;
+
   const { 
     players, 
     crops, 
-    logs, 
+    logs: globalLogs, 
     stats, 
     isLoading, 
     isFetchingMore,
@@ -68,109 +42,101 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
   
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
   
+  // UI 状态
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [isPlayerLoading, setIsPlayerLoading] = useState(false);
 
-  const [scrollContainer, setScrollContainer] = useState<HTMLDivElement | null>(null);
-  const observerTarget = useRef<HTMLDivElement>(null);
-  const stateRef = useRef({ hasMore, isFetchingMore });
+  // 日志 Tab 状态
+  const [activeLogTab, setActiveLogTab] = useState<'global' | 'agent'>('global');
+  const [agentLogs, setAgentLogs] = useState<ActionLog[]>([]);
+  const [isAgentLogsLoading, setIsAgentLogsLoading] = useState(false);
 
+  // 处理初始用户 (响应 URL 变化)
   useEffect(() => {
-    stateRef.current = { hasMore, isFetchingMore };
-  }, [hasMore, isFetchingMore]);
-
-  useEffect(() => {
-    if (initialUsername) {
+    if (urlUsername) {
       setIsSearching(true);
-      publicApi.getPlayerByName(initialUsername)
+      publicApi.getPlayerByName(urlUsername)
         .then((player) => {
           setSelectedPlayer(player);
         })
         .catch(() => {
-          console.error(`User ${initialUsername} not found`);
+          console.error(`User ${urlUsername} not found`);
         })
         .finally(() => setIsSearching(false));
     }
-  }, [initialUsername]);
+  }, [urlUsername]); // [修改] 依赖项改为 urlUsername
 
+  // 默认选中逻辑
   useEffect(() => {
-    if (!initialUsername && !selectedPlayer && players.length > 0) {
+    if (!urlUsername && !selectedPlayer && players.length > 0) {
       setSelectedPlayer(players[0]);
     }
-  }, [players, selectedPlayer, initialUsername]);
+  }, [players, selectedPlayer, urlUsername]);
 
-  const handlePlayerClick = async (player: Player) => {
+  // 当切换到 Agent Tab 且选中玩家变化时，获取该玩家的日志
+  useEffect(() => {
+    if (activeLogTab === 'agent' && selectedPlayer) {
+      setIsAgentLogsLoading(true);
+      publicApi.getLogs(selectedPlayer.id)
+        .then(logs => setAgentLogs(logs))
+        .catch(err => console.error("Failed to fetch agent logs", err))
+        .finally(() => setIsAgentLogsLoading(false));
+    }
+  }, [activeLogTab, selectedPlayer]);
+
+  // 切换玩家逻辑
+  const switchPlayer = async (name: string) => {
     if (window.innerWidth < 1024) {
-      router.push(`/u/${player.name}`);
+      router.push(`/u/${name}`);
     } else {
-      setSelectedPlayer(player);
-      window.history.pushState(null, '', `/u/${player.name}`);
       setIsPlayerLoading(true);
+      window.history.pushState(null, '', `/u/${name}`);
       try {
-        const freshData = await publicApi.getPlayerByName(player.name);
+        const freshData = await publicApi.getPlayerByName(name);
         setSelectedPlayer(freshData);
       } catch (e) {
         console.error("Failed to refresh player data", e);
+        alert("Agent not found or offline.");
       } finally {
         setIsPlayerLoading(false);
       }
     }
   };
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) return;
-    
-    if (window.innerWidth < 1024) {
-        setIsSearching(true);
-        try {
-            const player = await publicApi.getPlayerByName(searchQuery.trim());
-            router.push(`/u/${player.name}`);
-        } catch {
-            alert("User not found");
-        } finally {
-            setIsSearching(false);
-        }
-    } else {
-        setIsPlayerLoading(true);
-        try {
-            const player = await publicApi.getPlayerByName(searchQuery.trim());
-            setSelectedPlayer(player);
-            window.history.pushState(null, '', `/u/${player.name}`);
-        } catch (err) {
-            alert("User not found!");
-        } finally {
-            setIsPlayerLoading(false);
-        }
+  const handlePlayerClick = (player: Player) => {
+    if (window.innerWidth >= 1024) {
+        setSelectedPlayer(player);
     }
+    switchPlayer(player.name);
   };
 
-  useEffect(() => {
-    if (!scrollContainer) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const { hasMore, isFetchingMore } = stateRef.current;
-        if (entries[0].isIntersecting && hasMore && !isFetchingMore) {
-          loadMorePlayers();
-        }
-      },
-      { root: scrollContainer, threshold: 0.1, rootMargin: "200px" }
-    );
-    if (observerTarget.current) observer.observe(observerTarget.current);
-    return () => observer.disconnect();
-  }, [scrollContainer, loadMorePlayers]);
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) return;
+    switchPlayer(searchQuery.trim());
+  };
 
-  const formattedLogs = useMemo(() => {
-    return logs.map((log, index) => ({
-      id: `${log.timestamp}-${index}`,
+  const handleLogPlayerClick = (name: string) => {
+    switchPlayer(name);
+  };
+
+  // 格式化日志
+  const formatLogs = (rawLogs: ActionLog[], suffix: string) => {
+    return rawLogs.map((log, index) => ({
+      id: log.id || `${log.timestamp}-${index}-${suffix}`,
       time: new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
       player: log.playerName,
       action: log.action,
       details: log.details,
     }));
-  }, [logs]);
+  };
+
+  const formattedGlobalLogs = useMemo(() => formatLogs(globalLogs, 'global'), [globalLogs]);
+  const formattedAgentLogs = useMemo(() => formatLogs(agentLogs, 'agent'), [agentLogs]);
+
+  const currentLogs = activeLogTab === 'global' ? formattedGlobalLogs : formattedAgentLogs;
 
   if (isLoading && !selectedPlayer && players.length === 0) {
     return (
@@ -187,66 +153,15 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
     <div className="h-screen w-full bg-[#1c1917] text-stone-200 font-sans flex flex-col overflow-hidden selection:bg-orange-500/30">
       
       {/* Header */}
-      <header className="h-14 border-b-2 border-stone-700 bg-stone-800 flex-none flex items-center justify-between px-4 z-40 relative gap-4 shadow-md">
-        <div className="flex items-center gap-3 flex-none cursor-pointer" onClick={() => router.push('/')}>
-          <div className="w-8 h-8 bg-orange-700 border-2 border-orange-500 flex items-center justify-center shadow-[2px_2px_0_0_#431407]">
-            <Gamepad2 className="w-5 h-5 text-white" />
-          </div>
-          <div className="hidden md:block">
-            <h1 className="text-lg font-bold tracking-tight text-white leading-none font-mono">FARM.OS</h1>
-            <p className="text-[10px] text-stone-500 font-mono mt-0.5 uppercase">v4.9.0</p>
-          </div>
-        </div>
-
-        <div className="flex-1 max-w-sm">
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
-            <input
-              type="text"
-              placeholder="SEARCH AGENT..."
-              className="w-full bg-stone-900 border-2 border-stone-600 text-xs text-white pl-10 pr-3 py-1.5 outline-none focus:border-orange-500 focus:bg-stone-950 font-mono placeholder:text-stone-600 shadow-inner"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-4 text-sm flex-none">
-          <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-stone-900 border border-stone-600">
-            <Users className="w-3.5 h-3.5 text-stone-400" />
-            <span className="font-mono font-bold text-white text-xs">{stats.totalPlayers}</span>
-          </div>
-
-          <div className="hidden sm:flex items-center gap-2 px-2 py-1 bg-stone-900 border border-stone-600">
-            <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />
-            <span className="font-mono font-bold text-green-400 text-xs">{stats.harvestableCount}</span>
-          </div>
-          
-          <div className="flex items-center gap-2">
-             {isConnected ? (
-              <Wifi className="w-4 h-4 text-green-600 drop-shadow-[0_0_5px_rgba(34,197,94,0.3)]" />
-            ) : (
-              <WifiOff className="w-4 h-4 text-red-500" />
-            )}
-            
-            <button 
-              onClick={() => setIsShopOpen(true)}
-              className="p-1.5 hover:bg-stone-700 active:bg-stone-900 border border-transparent hover:border-stone-500 rounded-none transition-all text-stone-400 hover:text-yellow-400"
-              title="Market"
-            >
-              <ShoppingBasket className="w-4 h-4" />
-            </button>
-            
-            <button 
-              onClick={() => setIsActivityOpen(true)} 
-              className="lg:hidden p-1.5 hover:bg-stone-700 active:bg-stone-900 border border-transparent hover:border-stone-500 rounded-none transition-all text-stone-400 hover:text-green-400"
-            >
-              <Activity className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </header>
+      <GameHeader 
+        stats={stats}
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        onSearch={handleSearch}
+        isConnected={isConnected}
+        onOpenShop={() => setIsShopOpen(true)}
+        onOpenActivity={() => setIsActivityOpen(true)}
+      />
 
       {error && (
         <div className="flex-none bg-red-900/90 border-b-2 border-red-600 px-4 py-1 z-40 relative">
@@ -260,218 +175,86 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
       {/* Main Content */}
       <main className="flex-1 min-h-0 overflow-hidden relative flex flex-col lg:flex-row bg-[#1c1917]">
         
-          {/* ================= 左侧：排行榜 ================= */}
-          <div className={`lg:w-80 flex-none border-b-2 lg:border-b-0 lg:border-r-2 border-stone-700 flex flex-col bg-stone-900/50 ${initialUsername ? 'hidden lg:flex' : 'flex'} h-full`}>
-            <PanelHeader title="AGENTS" icon={Trophy} />
-            <div 
-              ref={setScrollContainer}
-              className="flex-1 overflow-y-auto custom-scrollbar min-h-0"
-            >
-              {players.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-stone-600 text-xs font-mono">NO SIGNAL</div>
-              ) : (
-                <div className="divide-y divide-stone-800">
-                  {players.map((player, index) => (
-                  <div
-                    key={player.id}
-                    onClick={() => handlePlayerClick(player)}
-                    className={`
-                      group relative p-3 cursor-pointer transition-all duration-100 flex items-center gap-3
-                      font-mono
-                      ${selectedPlayer?.id === player.id 
-                        ? "bg-stone-800 shadow-[inset_3px_0_0_#f97316]" 
-                        : "hover:bg-stone-800/50"}
-                    `}
-                  >
-                    <div className="relative flex-none">
-                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                       <img 
-                          src={player.avatar} 
-                          alt="avt"
-                          className="w-10 h-10 bg-stone-900 border border-stone-600 object-cover"
-                          style={{ imageRendering: 'pixelated' }}
-                       />
-                       <div className={`absolute -top-1 -left-1 w-4 h-4 flex items-center justify-center text-[9px] font-bold border shadow-sm z-10 ${
-                            index < 3 ? 'bg-yellow-500 text-black border-yellow-300' : 'bg-stone-700 text-stone-300 border-stone-500'
-                        }`}>
-                          {index + 1}
-                       </div>
-                    </div>
+          {/* 1. 左侧：排行榜 */}
+          <Leaderboard 
+            players={players}
+            selectedPlayer={selectedPlayer}
+            onPlayerSelect={handlePlayerClick}
+            isFetchingMore={isFetchingMore}
+            hasMore={hasMore}
+            onLoadMore={loadMorePlayers}
+            isHiddenOnMobile={!!urlUsername} // [修改] 使用 urlUsername 判断
+          />
 
-                    <div className="flex flex-col flex-1 min-w-0 justify-center">
-                       <div className="flex items-center justify-between">
-                          <span className={`text-xs font-bold truncate ${selectedPlayer?.id === player.id ? 'text-orange-400' : 'text-stone-300'}`}>
-                            {player.name}
-                          </span>
-                       </div>
-                       
-                       <div className="flex items-center justify-between mt-1">
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] text-stone-500 bg-stone-950 px-1 rounded-sm">LV.{player.level}</span>
-                            <span className="text-yellow-600 flex items-center gap-1 text-[10px]">
-                                <Coins className="w-3 h-3" /> {player.gold > 1000 ? `${(player.gold/1000).toFixed(1)}k` : player.gold}
-                            </span>
-                          </div>
-                          
-                          {player.lands.some(l => l.status === 'harvestable') && (
-                            <div className="w-2 h-2 bg-green-500 animate-pulse shadow-[0_0_5px_rgba(34,197,94,0.8)]"></div>
-                          )}
-                       </div>
-                    </div>
-                  </div>
-                ))}
-                </div>
-              )}
+          {/* 2. 中间：农场详情 (Viewport) */}
+          <FarmViewport 
+            selectedPlayer={selectedPlayer}
+            isSearching={isSearching}
+            isPlayerLoading={isPlayerLoading}
+            showOnMobile={!!urlUsername} // [修改] 使用 urlUsername 判断
+          />
 
-              <div ref={observerTarget} className="py-4 flex flex-col items-center justify-center min-h-[40px] border-t border-stone-800">
-                 {isFetchingMore ? (
-                   <div className="flex items-center gap-2 text-xs text-stone-500 font-mono">
-                     <Loader2 className="w-3 h-3 animate-spin" /> SCANNING...
-                   </div>
-                 ) : hasMore ? (
-                   <button onClick={loadMorePlayers} className="text-xs text-stone-500 hover:text-orange-400 font-mono border-b border-dotted border-stone-600 hover:border-orange-400">
-                     LOAD MORE DATA
-                   </button>
-                 ) : (
-                   <span className="text-[10px] text-stone-700 font-mono">// END OF STREAM //</span>
-                 )}
-              </div>
-            </div>
-          </div>
-
-          {/* ================= 中间：农场详情 ================= */}
-          <section className={`flex-1 flex flex-col bg-[#292524] min-w-0 relative ${!initialUsername ? 'hidden lg:flex' : 'flex'}`}>
-            <PanelHeader title="VIEWPORT" icon={Sprout} />
-
-            {(isSearching || isPlayerLoading) ? (
-               <div className="h-full flex flex-col items-center justify-center text-stone-600 font-mono bg-[#1c1917] animate-pulse">
-                  <Loader2 className="w-8 h-8 animate-spin mb-2 text-orange-500" />
-                  <p>FETCHING DATA...</p>
-               </div>
-            ) : selectedPlayer ? (
-              <div className="flex-1 flex flex-col min-h-0 bg-[#292524]">
-                {/* 玩家信息 */}
-                <div className="flex-none p-4 border-b-2 border-stone-700 bg-stone-800/50">
-                  <div className="flex justify-between items-start gap-4">
-                    
-                    {/* 左侧：头像与信息 */}
-                    <div className="flex items-start gap-4 flex-1 min-w-0">
-                      <div className="relative flex-none group">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img 
-                          src={selectedPlayer.avatar} 
-                          alt={selectedPlayer.name} 
-                          className="w-16 h-16 bg-stone-900 border-2 border-stone-500 object-cover group-hover:border-orange-500 transition-colors"
-                          style={{ imageRendering: 'pixelated' }}
-                        />
-                        <div className="absolute -bottom-2 -right-2 bg-stone-900 text-orange-400 text-[10px] font-bold px-1 border border-orange-400 font-mono shadow-sm">
-                          LV.{selectedPlayer.level}
-                        </div>
-                      </div>
-                      
-                      <div className="flex-1 min-w-0 pt-0.5"> 
-                        <h2 className="text-xl font-bold text-white flex items-center gap-2 font-mono uppercase truncate tracking-tight">
-                          {selectedPlayer.name}
-                        </h2>
-                        <p className="text-[10px] text-stone-500 font-mono mb-2 truncate font-bold">UUID: {selectedPlayer.id}</p>
-                        
-                        <div className="flex flex-wrap gap-2">
-                          {selectedPlayer.twitter ? (
-                            <a 
-                              href={`https://x.com/${selectedPlayer.twitter.replace('@', '')}`} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[10px] text-blue-300 hover:text-white bg-blue-950/50 px-2 py-0.5 border border-blue-800/50 hover:border-blue-500 transition-colors font-mono whitespace-nowrap"
-                            >
-                              <Twitter className="w-3 h-3" />
-                              <span className="truncate max-w-[80px] sm:max-w-none">@{selectedPlayer.twitter.replace('@', '')}</span>
-                            </a>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] text-stone-600 bg-stone-900/50 px-2 py-0.5 border border-stone-800 font-mono whitespace-nowrap">
-                              <Twitter className="w-3 h-3" />
-                              <span>N/A</span>
-                            </span>
-                          )}
-
-                          <div className="flex items-center gap-3 text-[10px] text-stone-400 bg-stone-900/50 px-2 py-0.5 border border-stone-800 font-mono whitespace-nowrap">
-                             <span className="text-white font-bold">{selectedPlayer._count?.following || 0}</span> <span className="text-[8px] uppercase">Following</span>
-                             <span className="w-px h-2 bg-stone-700"></span>
-                             <span className="text-white font-bold">{selectedPlayer._count?.followers || 0}</span> <span className="text-[8px] uppercase">Followers</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* 右侧：Credits */}
-                    <div className="text-right flex-none ml-2">
-                       <div className="flex items-center justify-end gap-1.5 text-[10px] text-yellow-600 uppercase font-bold mb-1 font-mono tracking-widest">
-                          <Coins className="w-3 h-3" />
-                          <span>Credits</span>
-                       </div>
-                       <div className="text-3xl font-mono font-bold text-yellow-500 drop-shadow-[2px_2px_0_rgba(0,0,0,0.8)]">
-                         {selectedPlayer.gold.toLocaleString()}
-                       </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 土地网格 */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[#292524] min-h-0 relative shadow-[inset_0_10px_30px_rgba(0,0,0,0.3)]">
-                   <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
-
-                   <div className="flex items-center justify-between mb-4 relative z-10">
-                      <div className="flex items-center gap-2 text-xs font-bold text-[#78716c] uppercase tracking-widest font-mono">
-                        <Leaf className="w-3 h-3" />
-                        <span>Field Matrix</span>
-                      </div>
-                      
-                      <div className="flex gap-2">
-                         <MiniStat label="IDLE" value={selectedPlayer.lands.filter((l) => l.status === "empty").length} color="text-stone-300" bg="bg-stone-700" />
-                         <MiniStat label="GROW" value={selectedPlayer.lands.filter((l) => l.status === "planted").length} color="text-blue-200" bg="bg-blue-900" />
-                         <MiniStat label="RIPE" value={selectedPlayer.lands.filter((l) => l.status === "harvestable").length} color="text-green-200" bg="bg-green-900" />
-                      </div>
-                   </div>
-
-                  <div className="grid grid-cols-3 gap-6 relative z-10 max-w-2xl mx-auto">
-                    {selectedPlayer.lands.map((land) => (
-                      <LandTile key={land.id} land={land} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-stone-600 font-mono bg-[#1c1917]">
-                <Sprout className="w-16 h-16 opacity-10 mb-4" />
-                <p className="tracking-widest text-xs">SELECT A UNIT TO INSPECT</p>
-              </div>
-            )}
-          </section>
-
-          {/* ================= 右侧：PC 端日志面板 ================= */}
+          {/* 3. 右侧：PC 端日志面板 */}
           <div className="hidden lg:flex lg:w-80 flex-none border-l-2 border-stone-700 flex-col bg-stone-900 h-full">
-            <PanelHeader title="SYSTEM LOG" icon={Activity} />
-            {/* [修改] 将 bg-stone-950 改为 bg-stone-900/50，防止太黑 */}
-            <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 bg-stone-900/50">
-               <ActivityList logs={formattedLogs} />
+            <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center justify-between px-2 gap-2 select-none">
+               <div className="flex items-center gap-2">
+                 <Activity className="w-4 h-4 text-stone-400" />
+                 <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono hidden xl:block">SYSTEM LOG</h2>
+               </div>
+               
+               {/* Tab Switcher */}
+               <div className="flex bg-stone-950 p-0.5 rounded-sm">
+                  <button 
+                    onClick={() => setActiveLogTab('global')}
+                    className={`px-2 py-0.5 text-[10px] font-bold font-mono transition-colors flex items-center gap-1 ${activeLogTab === 'global' ? 'bg-stone-700 text-white shadow-sm' : 'text-stone-500 hover:text-stone-300'}`}
+                  >
+                    <Globe className="w-3 h-3" /> ALL
+                  </button>
+                  <button 
+                    onClick={() => setActiveLogTab('agent')}
+                    className={`px-2 py-0.5 text-[10px] font-bold font-mono transition-colors flex items-center gap-1 ${activeLogTab === 'agent' ? 'bg-orange-900/50 text-orange-200 border border-orange-500/30' : 'text-stone-500 hover:text-stone-300'}`}
+                  >
+                    <User className="w-3 h-3" /> AGENT
+                  </button>
+               </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0 bg-stone-900/50 relative">
+               {isAgentLogsLoading && activeLogTab === 'agent' && (
+                 <div className="absolute inset-0 bg-stone-900/80 flex items-center justify-center z-10">
+                    <Loader2 className="w-5 h-5 text-orange-500 animate-spin" />
+                 </div>
+               )}
+               
+               {activeLogTab === 'agent' && !selectedPlayer ? (
+                 <div className="flex flex-col items-center justify-center h-full text-stone-600 text-xs font-mono p-4 text-center">
+                    <User className="w-8 h-8 mb-2 opacity-20" />
+                    SELECT AGENT TO VIEW LOGS
+                 </div>
+               ) : (
+                 <ActivityList logs={currentLogs} onPlayerClick={handleLogPlayerClick} />
+               )}
             </div>
           </div>
 
       </main>
 
-      {/* ================= 模态框与抽屉 ================= */}
-      
-      {/* 商店模态框 */}
+      {/* ================= Modals ================= */}
       <ShopModal 
         isOpen={isShopOpen} 
         onClose={() => setIsShopOpen(false)} 
         crops={crops} 
       />
 
-      {/* 日志侧边栏 (Mobile Only) */}
+      {/* [修改] 传递 Tab 状态和当前日志给侧边栏 */}
       <LogSidebar 
         isOpen={isActivityOpen} 
         onClose={() => setIsActivityOpen(false)} 
-        logs={formattedLogs} 
+        logs={currentLogs} // 传递动态日志
+        activeTab={activeLogTab}
+        onTabChange={setActiveLogTab}
+        isLoading={isAgentLogsLoading}
+        onPlayerClick={handleLogPlayerClick} 
       />
 
     </div>

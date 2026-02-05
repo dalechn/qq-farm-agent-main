@@ -1,3 +1,4 @@
+//
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { publicApi, Player, Crop, ActionLog } from '@/lib/api';
 import { useWebSocket, WebSocketMessage } from './useWebSocket';
@@ -20,18 +21,15 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [isFetchingMore, setIsFetchingMore] = useState(false);
-  // [新增] 存储服务器返回的真实总数
   const [totalCount, setTotalCount] = useState(0);
 
-  // 获取玩家列表 (初始加载 或 加载更多)
+  // 获取玩家列表
   const fetchPlayers = useCallback(async (pageNum: number, isLoadMore = false) => {
     try {
       if (isLoadMore) setIsFetchingMore(true);
-      
-      const response = await publicApi.getPlayers(pageNum, 20); // 每页 20 条
+      const response = await publicApi.getPlayers(pageNum, 20);
       
       if (isLoadMore) {
-        // 过滤掉可能重复的 ID (React key duplicate fix)
         setPlayers(prev => {
             const existingIds = new Set(prev.map(p => p.id));
             const newPlayers = response.data.filter(p => !existingIds.has(p.id));
@@ -41,7 +39,6 @@ export function useGameData(options: UseGameDataOptions = {}) {
         setPlayers(response.data);
       }
       
-      // [新增] 更新总数和分页状态
       setTotalCount(response.pagination.total);
       setHasMore(response.pagination.hasMore);
       setError(null);
@@ -52,7 +49,6 @@ export function useGameData(options: UseGameDataOptions = {}) {
     }
   }, []);
 
-  // 加载下一页的函数
   const loadMorePlayers = useCallback(() => {
     if (!hasMore || isFetchingMore) return;
     const nextPage = page + 1;
@@ -60,7 +56,6 @@ export function useGameData(options: UseGameDataOptions = {}) {
     fetchPlayers(nextPage, true);
   }, [page, hasMore, isFetchingMore, fetchPlayers]);
 
-  // 获取作物列表
   const fetchCrops = useCallback(async () => {
     try {
       const data = await publicApi.getCrops();
@@ -70,22 +65,19 @@ export function useGameData(options: UseGameDataOptions = {}) {
     }
   }, []);
 
-  // [新增] 获取历史日志
   const fetchLogs = useCallback(async () => {
     try {
-      // 假设 publicApi 已添加 getLogs 方法
       const historyLogs = await publicApi.getLogs();
+      // 后端返回的 logs 已经包含 id
       setLogs(historyLogs);
     } catch (err: any) {
       console.error('Failed to fetch logs:', err);
     }
   }, []);
 
-  // 初始加载
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
-      // 并行请求：玩家列表、作物列表、历史日志
       await Promise.all([fetchPlayers(1), fetchCrops(), fetchLogs()]);
       setIsLoading(false);
     };
@@ -98,6 +90,8 @@ export function useGameData(options: UseGameDataOptions = {}) {
       case 'action':
         setLogs((prev) => [
           {
+            // [修改] 显式透传 message 中的所有字段，包含 id
+            id: (message as any).id, 
             type: message.type,
             action: message.action,
             playerId: message.playerId,
@@ -105,11 +99,10 @@ export function useGameData(options: UseGameDataOptions = {}) {
             details: message.details,
             timestamp: message.timestamp,
           },
-          ...prev.slice(0, 99), // 保持最新的 100 条 (与后端 Redis 限制一致)
+          ...prev.slice(0, 99),
         ]);
         break;
       case 'player_joined':
-         // 有新玩家加入时，总数 + 1
          setTotalCount(prev => prev + 1);
          break;
       default:
@@ -121,11 +114,9 @@ export function useGameData(options: UseGameDataOptions = {}) {
     onMessage: handleWebSocketMessage,
   });
 
-  // 统计数据
   const stats = {
-    // [修改] 显示真实总数，而不是 loaded count
     totalPlayers: totalCount, 
-    loadedCount: players.length, // 可选：用于调试
+    loadedCount: players.length,
     totalGold: players.reduce((sum, p) => sum + p.gold, 0),
     totalExp: players.reduce((sum, p) => sum + p.exp, 0),
     harvestableCount: players.reduce(
@@ -144,7 +135,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
     hasMore,
     error,
     isConnected,
-    refresh: () => { setPage(1); fetchPlayers(1); fetchLogs(); }, // 刷新时也重新获取日志
+    refresh: () => { setPage(1); fetchPlayers(1); fetchLogs(); },
     loadMorePlayers,
   };
 }
