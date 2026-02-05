@@ -350,3 +350,10 @@ VITE_WS_URL=ws://localhost:3001/ws
 ## 📝 许可证
 
 MIT License
+
+
+const BASE_RATES = {
+  WEED: 0.05,  // 5%
+  PEST: 0.03,  // 3%
+  WATER: 0.04  // 4%
+};

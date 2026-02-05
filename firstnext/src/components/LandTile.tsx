@@ -1,6 +1,9 @@
+// src/components/LandTile.tsx
+
 import { useEffect, useState } from "react";
-import { Skull, Droplets, Bug, Sprout, Shovel } from "lucide-react";
-import { Land, plant, harvest, careLand, shovelLand } from "../lib/api";
+// [修改] 引入 Zap 和 Lock 图标
+import { Skull, Droplets, Bug, Sprout, Shovel, Zap, Lock } from "lucide-react";
+import { Land, plant, harvest, careLand, shovelLand, useFertilizer } from "../lib/api";
 
 // ==========================================
 // 1. 像素风 SVG 图标组件库
@@ -45,7 +48,7 @@ const IconCarrot = () => (
   </svg>
 );
 
-// [新增] 作物：土豆 (Potato)
+// 作物：土豆 (Potato)
 const IconPotato = () => (
   <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
     <path d="M6 2h4v3H6z" fill="#15803D" />
@@ -78,7 +81,7 @@ const IconStrawberry = () => (
   </svg>
 );
 
-// [新增] 作物：番茄 (Tomato)
+// 作物：番茄 (Tomato)
 const IconTomato = () => (
   <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
     <path d="M7 2h2v2H7z" fill="#15803D" />
@@ -99,7 +102,7 @@ const IconWatermelon = () => (
   </svg>
 );
 
-// [新增] 作物：南瓜 (Pumpkin)
+// 作物：南瓜 (Pumpkin)
 const IconPumpkin = () => (
   <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
     <path d="M7 2h2v2H7z" fill="#5D4037" />
@@ -132,17 +135,21 @@ const CROP_CONFIG: Record<string, { color: string; name: string }> = {
 };
 
 interface LandProps {
-  land: Land;
+  land?: Land;   // [修改] 设为可选，因为锁定的土地没有数据
+  locked?: boolean; // [新增] 锁定状态标志
   selectedCrop?: string | null;
   onUpdate?: () => void;
 }
 
-export function LandTile({ land, selectedCrop, onUpdate }: LandProps) {
+export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
   
   // 1. 计算生长进度
   useEffect(() => {
+    // [修改] 增加判空，如果是锁定土地则不执行逻辑
+    if (!land) return;
+
     if (land.status === 'planted' && land.matureAt) {
       const updateProgress = () => {
         const now = Date.now();
@@ -170,6 +177,26 @@ export function LandTile({ land, selectedCrop, onUpdate }: LandProps) {
     }
   }, [land]);
 
+  // [新增] 处理锁定状态的渲染
+  if (locked) {
+    return (
+      <div 
+        className="
+          aspect-square relative 
+          border-2 border-dashed border-stone-800/50 
+          bg-stone-900/30 
+          flex flex-col items-center justify-center 
+          select-none
+        "
+      >
+        <Lock className="w-6 h-6 text-stone-700/50" />
+      </div>
+    );
+  }
+
+  // 安全检查：如果未锁定但也没有土地数据，不渲染
+  if (!land) return null;
+
   const isMature = land.status === 'harvestable' || (land.status === 'planted' && progress >= 100);
 
   // 2. 交互处理
@@ -185,7 +212,6 @@ export function LandTile({ land, selectedCrop, onUpdate }: LandProps) {
         await harvest(land.position);
         onUpdate?.();
       } else if (land.status === 'withered') {
-        // 点击枯萎土地也可以铲除
         await shovelLand(land.position);
         onUpdate?.();
       }
@@ -197,7 +223,7 @@ export function LandTile({ land, selectedCrop, onUpdate }: LandProps) {
   };
 
   const handleCare = async (e: React.MouseEvent, type: 'water' | 'weed' | 'pest') => {
-    e.stopPropagation(); // 阻止冒泡，不触发点击土地
+    e.stopPropagation(); 
     if (loading) return;
     try {
       setLoading(true);
@@ -224,9 +250,25 @@ export function LandTile({ land, selectedCrop, onUpdate }: LandProps) {
     }
   };
 
+  // [新增] 施肥操作
+  const handleFertilize = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (loading) return;
+    try {
+      setLoading(true);
+      // 默认使用普通化肥 'normal'
+      await useFertilizer(land.position, 'normal');
+      onUpdate?.();
+    } catch (error) {
+      console.error('Fertilizer failed:', error);
+      alert('施肥失败：可能没有库存');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // 3. 渲染图标
   const renderCropIcon = () => {
-    // 枯萎状态
     if (land.status === 'withered') {
       const Icon = land.cropType ? CROP_COMPONENTS[land.cropType] : IconSprout;
       return (
@@ -248,23 +290,64 @@ export function LandTile({ land, selectedCrop, onUpdate }: LandProps) {
     return Icon ? <Icon /> : null;
   };
 
-  // 4. 动态样式
+  // 4. 动态样式 (关键修改：支持红/黑/金土地)
   const getLandStyle = () => {
+    // A. 枯萎状态 (优先级最高)
     if (land.status === 'withered') {
-      return "bg-stone-600 border-stone-800"; // 枯萎灰暗色
+      return "bg-stone-600 border-stone-800 opacity-100"; 
     }
+
+    // B. 成熟状态 (金色光晕)
     if (isMature) {
-        return "bg-[#3f2e21] border-[#fbbf24] shadow-[0_0_15px_rgba(251,191,36,0.4)] z-10 scale-[1.02]";
+      return "bg-[#3f2e21] border-[#fbbf24] shadow-[0_0_15px_rgba(251,191,36,0.4)] z-10 scale-[1.02]";
     }
-    switch (land.status) {
-      case 'planted':
-        return "bg-[#271c19] border-[#443632]"; 
-      case 'empty':
+
+    // C. 基础土地样式配置
+    let styles = {
+      bgEmpty: "bg-[#382e2c]",   // 普通: 灰褐
+      bgPlanted: "bg-[#271c19]", // 普通: 深褐
+      border: "border-[#443632]"
+    };
+
+    switch (land.landType) {
+      case 'red': // 红土地
+        styles = {
+          bgEmpty: "bg-[#7f1d1d]",   // 鲜红褐
+          bgPlanted: "bg-[#450a0a]", // 深红黑
+          border: "border-[#991b1b]"
+        };
+        break;
+      case 'black': // 黑土地
+        styles = {
+          bgEmpty: "bg-[#292524]",   // 深灰
+          bgPlanted: "bg-[#0a0a0a]", // 纯黑
+          border: "border-[#57534e]" // 灰边
+        };
+        break;
+      case 'gold': // 金土地
+        styles = {
+          bgEmpty: "bg-[#a16207]",   // 金黄褐
+          bgPlanted: "bg-[#422006]", // 深金褐
+          border: "border-[#facc15] shadow-[inset_0_0_10px_rgba(250,204,21,0.3)]" // 亮金边+内发光
+        };
+        break;
+      case 'normal':
       default:
-        // 如果选中了作物，empty 状态高亮一下表示可种
-        return selectedCrop 
-          ? "bg-[#382e2c] border-[#292524] opacity-100 ring-2 ring-green-500/50" 
-          : "bg-[#382e2c] border-[#292524] opacity-80 hover:opacity-100 hover:border-[#57534e]"; 
+        break;
+    }
+
+    // D. 根据当前状态应用样式
+    if (land.status === 'planted') {
+      // 种植中
+      return `${styles.bgPlanted} ${styles.border}`;
+    } else {
+      // 空闲
+      const baseClasses = `${styles.bgEmpty} ${styles.border}`;
+      if (selectedCrop) {
+        return `${baseClasses} opacity-100 ring-2 ring-green-500/50 cursor-pointer`;
+      } else {
+        return `${baseClasses} opacity-90 hover:opacity-100 hover:brightness-110 transition-all`;
+      }
     }
   };
 
@@ -281,12 +364,12 @@ export function LandTile({ land, selectedCrop, onUpdate }: LandProps) {
         select-none
         ${getLandStyle()}
       `}
-      onClick={handleClick}
+      // onClick={handleClick}
     >
       {/* 像素化内阴影 */}
       <div className="absolute inset-0 border-t-2 border-l-2 border-white/5 pointer-events-none"></div>
 
-      {/* 偷菜/灾害标记容器 */}
+      {/* 偷菜标记 */}
       <div className="absolute -top-3 -right-3 z-20 flex flex-col gap-1 items-end">
         {land.stolenCount > 0 && (
           <div className="bg-red-600 border border-black text-white px-1.5 py-0.5 text-[8px] font-bold font-mono shadow-sm animate-bounce">
@@ -328,9 +411,10 @@ export function LandTile({ land, selectedCrop, onUpdate }: LandProps) {
             <div className={`w-12 h-12 sm:w-14 sm:h-14 transition-transform duration-500 relative ${isMature ? 'animate-bounce-slow' : 'scale-90 group-hover:scale-100'}`}>
               {renderCropIcon()}
 
-              {/* [新增] 灾害浮层按钮 (仅在生长中显示) */}
+              {/* 交互浮层按钮 (仅在生长中显示) */}
               {!isMature && land.status === 'planted' && (
                 <div className="absolute inset-0 flex items-center justify-center gap-1 z-30">
+                  {/* 1. 灾害按钮 */}
                   {land.needsWater && (
                     <button onClick={(e) => handleCare(e, 'water')} className="bg-blue-500 hover:bg-blue-600 p-1 rounded-full shadow-lg animate-pulse" title="浇水">
                       <Droplets className="w-3 h-3 text-white" />

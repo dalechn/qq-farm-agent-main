@@ -1,9 +1,12 @@
+// backend/src/api/players.ts
+
 // 玩家相关 API
 
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { GameService } from '../services/GameService';
 import { authenticateApiKey } from '../middleware/auth';
+import { GAME_CONFIG } from '../config/game-keys';
 
 const router: Router = Router();
 
@@ -63,13 +66,16 @@ router.post('/player', async (req, res) => {
   const avatar = `https://robohash.org/${encodeURIComponent(name)}.png?set=set1`;
 
   try {
+    // [修改] 从配置读取初始土地数量
+    const initialLandCount = GAME_CONFIG.LAND.INITIAL_COUNT;
+    
     const player = await prisma.player.create({
       data: {
         name,
         avatar,
         twitter,
         lands: {
-          create: Array.from({ length: 9 }).map((_, i) => ({ position: i }))
+          create: Array.from({ length: initialLandCount }).map((_, i) => ({ position: i }))
         }
       }
     });

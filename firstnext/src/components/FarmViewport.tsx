@@ -1,3 +1,5 @@
+// src/components/FarmViewport.tsx
+
 import { 
     Sprout, 
     Loader2, 
@@ -41,8 +43,6 @@ import {
   
   // 辅助组件：状态胶囊
   function MiniStat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
-    // 如果值为 0 且不是 IDLE/GROW/RIPE 这种常驻状态，可以选择隐藏，或者为了布局整齐一直显示
-    // 这里我们一直显示，保持矩阵完整性
     return (
       <div className={`flex items-center gap-2 px-2 py-1 border border-b-2 border-r-2 border-black/20 ${bg}`}>
         <span className="text-[8px] text-stone-900 font-bold uppercase tracking-wider">{label}</span>
@@ -58,6 +58,9 @@ import {
     showOnMobile: boolean; // 控制在移动端的显示逻辑
   }
   
+  // [修改] 定义总土地格子数
+  const TOTAL_LAND_SLOTS = 18;
+
   export function FarmViewport({ 
     selectedPlayer, 
     isSearching, 
@@ -174,10 +177,18 @@ import {
                   </div>
                </div>
   
+              {/* [修改] 固定渲染 18 个格子 */}
               <div className="grid grid-cols-3 gap-6 relative z-10 max-w-2xl mx-auto">
-                {selectedPlayer.lands.map((land) => (
-                  <LandTile key={land.id} land={land} />
-                ))}
+                {Array.from({ length: TOTAL_LAND_SLOTS }).map((_, index) => {
+                  const land = selectedPlayer.lands.find(l => l.position === index);
+                  return (
+                    <LandTile 
+                      key={land ? land.id : `locked-${index}`} 
+                      land={land} // 如果没有该位置的土地，此处为 undefined
+                      locked={!land} // 如果没有该位置的土地，视为锁定
+                    />
+                  );
+                })}
               </div>
             </div>
           </div>

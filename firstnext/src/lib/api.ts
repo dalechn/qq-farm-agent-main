@@ -36,14 +36,15 @@ const getAuthHeaders = () => {
 export interface Land {
   id: number;
   position: number;
-  // [修改] 增加 withered 状态
   status: 'empty' | 'planted' | 'harvestable' | 'withered';
+  // [新增] 土地类型
+  landType: 'normal' | 'red' | 'black' | 'gold'; 
   cropType: string | null;
   plantedAt: string | null;
   matureAt: string | null;
   stolenCount: number;
   
-  // [新增] 灾害与多季状态
+  // 灾害与多季状态
   hasWeeds: boolean;
   hasPests: boolean;
   needsWater: boolean;
@@ -61,6 +62,11 @@ export interface Player {
   twitter?: string;
   createdAt: string;
   lands: Land[];
+  
+  // [新增] 化肥库存
+  fertilizers: number;
+  highFertilizers: number;
+  
   _count?: {
     followers: number;
     following: number;
@@ -75,7 +81,9 @@ export interface Crop {
   matureTime: number;
   exp: number;
   yield: number;
-  // [新增] 多季配置
+  // [新增] 种植限制
+  requiredLandType?: string; 
+  // 多季配置
   maxHarvests: number;
   regrowTime: number;
 }
@@ -155,7 +163,7 @@ export const harvest = async (position: number) => {
   });
 };
 
-// [新增] 照料 (浇水/除草/杀虫)
+// 照料 (浇水/除草/杀虫)
 export const careLand = async (position: number, type: 'water' | 'weed' | 'pest') => {
   return request<{ success: boolean; exp: number }>('/care', {
     method: 'POST',
@@ -164,12 +172,38 @@ export const careLand = async (position: number, type: 'water' | 'weed' | 'pest'
   });
 };
 
-// [新增] 铲除枯萎作物
+// 铲除枯萎作物
 export const shovelLand = async (position: number) => {
   return request<{ success: boolean; exp: number }>('/shovel', {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({ position }),
+  });
+};
+
+// [新增] 扩建土地
+export const expandLand = async () => {
+  return request<{ success: boolean; newPosition: number; cost: number }>('/land/expand', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+};
+
+// [新增] 升级土地
+export const upgradeLand = async (position: number) => {
+  return request<{ success: boolean }>('/land/upgrade', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ position }),
+  });
+};
+
+// [新增] 使用化肥
+export const useFertilizer = async (position: number, type: 'normal' | 'high') => {
+  return request<{ success: boolean; newMatureAt: string }>('/item/fertilizer', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ position, type }),
   });
 };
 

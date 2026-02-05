@@ -5,7 +5,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "postgresql" // 根据你的实际配置，这里可能是 postgresql 或 sqlite
 }
 
 model Player {
@@ -18,14 +18,14 @@ model Player {
   
   // 头像和推特
   avatar    String   @default("https://robohash.org/default.png?set=set1")
-  twitter   String?  // Optional: 推特账号
+  twitter   String?  
 
   createdAt DateTime @default(now())
   lands     Land[]
  
   // 关注关系
-  following Follow[] @relation("Following")  // 我关注的人
-  followers Follow[] @relation("Followers")  // 关注我的人
+  following Follow[] @relation("Following") 
+  followers Follow[] @relation("Followers") 
   
   // 偷菜记录
   steals        StealRecord[] @relation("Stealer")
@@ -38,16 +38,18 @@ model Player {
 model Land {
   id        Int       @id @default(autoincrement())
   position  Int
+  
   // status: empty, planted, harvestable, withered
   status    String    @default("empty") 
+  
+  // [新增] 土地类型: "normal", "red", "black", "gold"
+  landType  String    @default("normal")
+
   cropType  String?
   plantedAt DateTime?
   matureAt  DateTime?
 
-  // [新增] 惰性计算的核心字段：
-  // 记录上一次结算状态的时间。
-  // 每次读取（getPlayerState）时，会计算 (now - lastCalculatedAt) 的分钟数，
-  // 然后根据概率补算这段时间内是否发生了灾害。
+  // 惰性计算时间戳
   lastCalculatedAt DateTime @default(now()) 
 
   player    Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
@@ -56,17 +58,15 @@ model Land {
   // 被偷次数
   stolenCount Int     @default(0)
 
-  // 作物状态 (灾害)
-  hasWeeds    Boolean @default(false) // 杂草
-  hasPests    Boolean @default(false) // 虫害
-  needsWater  Boolean @default(false) // 干旱
+  // 作物状态
+  hasWeeds    Boolean @default(false) 
+  hasPests    Boolean @default(false) 
+  needsWater  Boolean @default(false) 
   
-  // 多季作物记录
-  remainingHarvests Int @default(1) // 剩余收获次数
+  remainingHarvests Int @default(1) 
 
-  // 索引优化
-  @@unique([playerId, position]) // 确保每个位置唯一
-  @@index([status])              // 加速查询特定状态的土地
+  @@unique([playerId, position]) 
+  @@index([status])             
 }
 
 model Crop {
@@ -78,12 +78,16 @@ model Crop {
   exp        Int
   yield      Int    @default(1)
   
+  // [新增] 种植需求: 需要什么级别的土地才能种 ("normal", "red", "black", "gold")
+  requiredLandType String @default("normal")
+
   // 多季作物配置
-  maxHarvests Int    @default(1) // 总共可收获几季
-  regrowTime  Int    @default(0) // 再生时间 (秒)
+  maxHarvests Int    @default(1) 
+  regrowTime  Int    @default(0) 
 }
 
-// 关注关系
+// --- 以下保持原样 ---
+
 model Follow {
   id          Int      @id @default(autoincrement())
   follower    Player   @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
@@ -95,7 +99,6 @@ model Follow {
   @@unique([followerId, followingId])
 }
 
-// 偷菜记录
 model StealRecord {
   id        Int      @id @default(autoincrement())
   stealer   Player   @relation("Stealer", fields: [stealerId], references: [id], onDelete: Cascade)
@@ -109,7 +112,6 @@ model StealRecord {
   createdAt DateTime @default(now())
 }
 
-// 通知
 model Notification {
   id        Int      @id @default(autoincrement())
   player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
