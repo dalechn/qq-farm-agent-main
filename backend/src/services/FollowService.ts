@@ -1,97 +1,44 @@
 // backend/src/services/FollowService.ts
 
 import prisma from '../utils/prisma';
-import { sendToPlayer, notifySteal } from '../utils/websocket';
-import { acquireLock, releaseLock, updateLeaderboard } from '../utils/redis';
+import { sendToPlayer } from '../utils/websocket';
+import { redisClient, acquireLock, releaseLock, updateLeaderboard } from '../utils/redis';
 import { GAME_CONFIG } from '../config/game-keys';
-
+import { QUEUE_STEAL_EVENTS, QUEUE_SOCIAL_EVENTS } from '../config/redis-keys';
 const DOG_CONFIG = GAME_CONFIG.DOG;
 
 export class FollowService {
   // 关注某人
   static async follow(followerId: string, followingId: string) {
-    if (followerId === followingId) {
-      throw new Error('Cannot follow yourself');
-    }
+    if (followerId === followingId) throw new Error('Cannot follow yourself');
 
-    // 检查是否已经关注
+    // 1. 检查是否已经关注 (读操作，很快)
     const existing = await prisma.follow.findUnique({
-      where: {
-        followerId_followingId: { followerId, followingId }
-      }
+      where: { followerId_followingId: { followerId, followingId } }
     });
+    if (existing) throw new Error('Already following');
 
-    if (existing) {
-      throw new Error('Already following');
-    }
-
-    // 创建关注关系
+    // 2. [核心同步逻辑] 创建关注关系 (必须同步，保证数据一致性)
     await prisma.follow.create({
       data: { followerId, followingId }
     });
 
-    // 获取关注者信息
-    const follower = await prisma.player.findUnique({
-      where: { id: followerId },
-      select: { name: true }
-    });
-
-    // 发送通知给被关注者
-    await prisma.notification.create({
-      data: {
-        playerId: followingId,
-        type: 'new_follower',
-        message: `${follower?.name} 关注了你！`,
-        data: JSON.stringify({ followerId, followerName: follower?.name })
-      }
-    });
-
-    sendToPlayer(followingId, {
-      type: 'new_follower',
-      followerId,
-      followerName: follower?.name
-    });
-
-    // 检查是否互相关注（成为好友）
+    // 3. [核心同步逻辑] 检查互相关注 (为了立刻返回给前端显示 "Mutual" 图标)
     const isMutual = await this.checkMutualFollow(followerId, followingId);
-    if (isMutual) {
-      // 通知双方成为好友
-      const following = await prisma.player.findUnique({
-        where: { id: followingId },
-        select: { name: true }
-      });
 
-      await prisma.notification.create({
-        data: {
-          playerId: followerId,
-          type: 'mutual_follow',
-          message: `你和 ${following?.name} 互相关注，现在是好友了！`,
-          data: JSON.stringify({ friendId: followingId, friendName: following?.name })
-        }
-      });
+    // 4. [异步任务] 推送事件到队列
+    // 我们不需要在这里查名字，把 ID 传给 Worker，让 Worker 去查，节省 API 时间
+    const eventData = {
+        type: 'FOLLOW_EVENT',
+        followerId,
+        followingId,
+        isMutual,
+        timestamp: new Date().toISOString()
+    };
+    
+    await redisClient.lPush(QUEUE_SOCIAL_EVENTS, JSON.stringify(eventData));
 
-      await prisma.notification.create({
-        data: {
-          playerId: followingId,
-          type: 'mutual_follow',
-          message: `你和 ${follower?.name} 互相关注，现在是好友了！`,
-          data: JSON.stringify({ friendId: followerId, friendName: follower?.name })
-        }
-      });
-
-      sendToPlayer(followerId, {
-        type: 'mutual_follow',
-        friendId: followingId,
-        friendName: following?.name
-      });
-
-      sendToPlayer(followingId, {
-        type: 'mutual_follow',
-        friendId: followerId,
-        friendName: follower?.name
-      });
-    }
-
+    // 5. 立刻返回结果
     return { success: true, isMutual };
   }
 
@@ -348,23 +295,24 @@ export class FollowService {
         const penalty = Math.min(stealer?.gold || 0, DOG_CONFIG.PENALTY_GOLD);
 
         if (penalty > 0) {
-          // 偷窃者扣钱
-          await prisma.player.update({
-            where: { id: stealerId },
-            data: { gold: { decrement: penalty } }
-          });
-          // 被偷者获得补偿 (狗捡回来的)
-          await prisma.player.update({
-            where: { id: victimId },
-            data: { gold: { increment: penalty } }
-          });
+          await prisma.$transaction([
+            prisma.player.update({ where: { id: stealerId }, data: { gold: { decrement: penalty } } }),
+            prisma.player.update({ where: { id: victimId }, data: { gold: { increment: penalty } } })
+          ]);
         }
 
-        // 发送通知
-        const stealerName = stealer?.name || '有人';
-        await notifySteal(victimId, stealerName, 'nothing', 0, position);
+        const eventData = {
+            type: 'DOG_BITTEN',
+            stealerId,
+            stealerName: stealer?.name,
+            victimId,
+            victimName: victim?.name,
+            position,
+            penalty,
+            timestamp: now.toISOString()
+        };
+        await redisClient.lPush(QUEUE_STEAL_EVENTS, JSON.stringify(eventData));
 
-        // 返回失败状态
         return {
           success: false,
           code: 'DOG_BITTEN',
@@ -425,20 +373,23 @@ export class FollowService {
       });
 
       // 创建偷菜记录
-      const stealer = await prisma.player.findUnique({ where: { id: stealerId }, select: { name: true } });
-      await prisma.stealRecord.create({
-        data: {
+      const stealerRecord = await prisma.player.findUnique({ where: { id: stealerId }, select: { name: true } });
+      
+      // [修改] 异步任务：推送到队列，而不是直接写 Notification/StealRecord
+      const eventData = {
+          type: 'STEAL_SUCCESS',
           stealerId,
+          stealerName: stealerRecord?.name,
           victimId,
-          landPos: position,
-          cropType: land.cropType!,
+          victimName: victim?.name,
+          position,
+          cropName: crop.name,
+          cropType: land.cropType,
           amount: stealAmount,
-          goldValue
-        }
-      });
-
-      // 发送通知
-      await notifySteal(victimId, stealer?.name || 'Unknown', crop.name, stealAmount, position);
+          goldValue,
+          timestamp: now.toISOString()
+      };
+      await redisClient.lPush(QUEUE_STEAL_EVENTS, JSON.stringify(eventData));
 
       // 更新 Redis 金币排行榜
       updateLeaderboard('gold', stealerId, updatedStealer.gold).catch((err: any) => console.error(err));

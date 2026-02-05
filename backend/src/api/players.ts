@@ -1,12 +1,10 @@
 // backend/src/api/players.ts
 
-// 玩家相关 API
-
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { GameService } from '../services/GameService';
 import { authenticateApiKey } from '../middleware/auth';
-import { GAME_CONFIG } from '../config/game-keys';
+// 注意：GAME_CONFIG 引用可能不再需要，除非用于其他逻辑
 
 const router: Router = Router();
 
@@ -21,10 +19,9 @@ router.get('/users/:name', async (req, res) => {
     try {
       const name = decodeURIComponent(req.params.name);
       
-      // 1. 先找到玩家 ID
       const user = await prisma.player.findFirst({
         where: { name: name },
-        select: { id: true } // 只拿 ID
+        select: { id: true }
       });
   
       if (!user) {
@@ -32,7 +29,6 @@ router.get('/users/:name', async (req, res) => {
         return; 
       }
   
-      // 2. [关键] 调用 GameService 获取（并结算）最新状态
       const playerState = await GameService.getPlayerState(user.id);
       
       if (!playerState) {
@@ -40,9 +36,6 @@ router.get('/users/:name', async (req, res) => {
           return;
       }
   
-      // 3. 补充关注数据 (GameService 通常只返回 Player + Lands)
-      // 我们需要额外查一下关注数等信息，或者修改 GameService 让它查更多
-      // 这里简单补查一下统计数据
       const counts = await prisma.player.findUnique({
           where: { id: user.id },
           select: { _count: { select: { followers: true, following: true } } }
@@ -58,32 +51,7 @@ router.get('/users/:name', async (req, res) => {
     }
   });
 
-// 创建玩家
-router.post('/player', async (req, res) => {
-  const { name, twitter } = req.body;
-  if (!name) return res.status(400).json({ error: 'Name is required' });
-
-  const avatar = `https://robohash.org/${encodeURIComponent(name)}.png?set=set1`;
-
-  try {
-    // [修改] 从配置读取初始土地数量
-    const initialLandCount = GAME_CONFIG.LAND.INITIAL_COUNT;
-    
-    const player = await prisma.player.create({
-      data: {
-        name,
-        avatar,
-        twitter,
-        lands: {
-          create: Array.from({ length: initialLandCount }).map((_, i) => ({ position: i }))
-        }
-      }
-    });
-    res.status(201).json(player);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to create player' });
-  }
-});
+// [已移除] 注册接口已移动到 auth-server.ts
 
 // 获取玩家排行榜
 router.get('/players', async (req, res) => {

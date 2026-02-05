@@ -1,0 +1,208 @@
+// backend/src/worker.ts
+
+import dotenv from 'dotenv';
+import prisma from './utils/prisma';
+import { redisClient } from './utils/redis';
+import { broadcast } from './utils/websocket';
+import { QUEUE_STEAL_EVENTS, QUEUE_SOCIAL_EVENTS } from './config/redis-keys';
+
+dotenv.config();
+
+console.log('👷 Worker process initializing...');
+
+/**
+ * 处理社交事件 (关注/互粉)
+ */
+async function processSocialEvent(event: any) {
+  const { followerId, followingId, isMutual, timestamp } = event;
+
+  try {
+    // 1. 获取双方名字 (Worker 中查询，不占用 API 线程)
+    const follower = await prisma.player.findUnique({
+      where: { id: followerId },
+      select: { name: true }
+    });
+    const following = await prisma.player.findUnique({
+      where: { id: followingId },
+      select: { name: true }
+    });
+
+    if (!follower || !following) return;
+
+    // 2. 发送 "被关注" 通知 (DB + WS)
+    await prisma.notification.create({
+      data: {
+        playerId: followingId,
+        type: 'new_follower',
+        message: `${follower.name} 关注了你！`,
+        data: JSON.stringify({ followerId, followerName: follower.name })
+      }
+    });
+
+    // sendToPlayer(followingId, {
+    //   type: 'new_follower',
+    //   followerId,
+    //   followerName: follower.name
+    // });
+
+    // 3. 如果是互粉，处理 "好友达成" 通知 (双向)
+    if (isMutual) {
+      const mutualMsgA = `你和 ${following.name} 互相关注，现在是好友了！`;
+      const mutualMsgB = `你和 ${follower.name} 互相关注，现在是好友了！`;
+
+      // 通知 A (Follower)
+      await prisma.notification.create({
+        data: {
+          playerId: followerId,
+          type: 'mutual_follow',
+          message: mutualMsgA,
+          data: JSON.stringify({ friendId: followingId, friendName: following.name })
+        }
+      });
+    //   sendToPlayer(followerId, {
+    //     type: 'mutual_follow',
+    //     friendId: followingId,
+    //     friendName: following.name
+    //   });
+
+      // 通知 B (Following)
+      await prisma.notification.create({
+        data: {
+          playerId: followingId,
+          type: 'mutual_follow',
+          message: mutualMsgB,
+          data: JSON.stringify({ friendId: followerId, friendName: follower.name })
+        }
+      });
+    //   sendToPlayer(followingId, {
+    //     type: 'mutual_follow',
+    //     friendId: followerId,
+    //     friendName: follower.name
+    //   });
+
+      console.log(`[Worker] 🤝 Mutual Follow: ${follower.name} <-> ${following.name}`);
+    } else {
+      console.log(`[Worker] ➕ New Follow: ${follower.name} -> ${following.name}`);
+    }
+
+  } catch (err) {
+    console.error(`[Worker] ❌ Error processing social event:`, err);
+  }
+}
+
+/**
+ * 处理偷菜事件
+ */
+async function processStealEvent(event: any) {
+  const { type, stealerId, stealerName, victimId, victimName, position, timestamp } = event;
+  const time = new Date(timestamp);
+
+  try {
+    if (type === 'STEAL_SUCCESS') {
+      const { cropName, cropType, amount, goldValue } = event;
+
+      // 1. 异步写日志 (StealRecord)
+      await prisma.stealRecord.create({
+        data: {
+          stealerId,
+          victimId,
+          landPos: position,
+          cropType,
+          amount,
+          goldValue,
+          createdAt: time
+        }
+      });
+
+      // 2. 异步写通知 (Notification)
+      await prisma.notification.create({
+        data: {
+          playerId: victimId,
+          type: 'stolen',
+          message: `${stealerName} 偷走了你位置 ${position} 的 ${amount} 个 ${cropName}！`,
+          data: JSON.stringify({ stealerName, cropName, amount, position })
+        }
+      });
+
+      // 3. 异步广播 (WebSocket + Redis Log)
+      await broadcast({
+        type: 'action',
+        action: 'STEAL',
+        playerId: stealerId,
+        playerName: stealerName,
+        details: `从 ${victimName} 偷走了 ${cropName}`,
+        timestamp: time.toISOString()
+      });
+
+      console.log(`[Worker] 🥬 Processed STEAL: ${stealerName} -> ${victimName}`);
+
+    } else if (type === 'DOG_BITTEN') {
+      const { penalty } = event;
+
+      // 1. 写被咬通知
+      await prisma.notification.create({
+        data: {
+          playerId: victimId, // 告诉狗主人狗咬到人了
+          type: 'dog_bite',
+          message: `你的狗咬住了 ${stealerName}，捡到了 ${penalty} 金币！`,
+          data: JSON.stringify({ stealerName, penalty })
+        }
+      });
+
+      // 2. 广播
+      await broadcast({
+        type: 'action',
+        action: 'STEAL_FAIL',
+        playerId: stealerId,
+        playerName: stealerName,
+        details: `去 ${victimName} 家偷菜被狗咬了，损失 ${penalty} 金币！`,
+        timestamp: time.toISOString()
+      });
+
+      console.log(`[Worker] 🐕 Processed BITE: ${stealerName} bitten at ${victimName}`);
+    }
+  } catch (err) {
+    console.error(`[Worker] ❌ Error processing steal event:`, err);
+  }
+}
+
+/**
+ * 启动 Worker 循环
+ */
+async function startWorker() {
+  // 确保 Redis 连接
+  if (!redisClient.isOpen) {
+    await redisClient.connect();
+  }
+
+  console.log('👷 Worker is listening for events (Steal & Social)...');
+
+  while (true) {
+    try {
+      // 阻塞式拉取，同时监听两个队列
+      // 0 表示无限等待，直到有数据
+      const result = await redisClient.brPop([
+        QUEUE_STEAL_EVENTS,
+        QUEUE_SOCIAL_EVENTS
+      ], 0);
+
+      if (result) {
+        const { key, element } = result;
+        const event = JSON.parse(element);
+
+        if (key === QUEUE_STEAL_EVENTS) {
+          await processStealEvent(event);
+        } else if (key === QUEUE_SOCIAL_EVENTS) {
+          await processSocialEvent(event);
+        }
+      }
+    } catch (error) {
+      console.error('[Worker] 💥 Loop error:', error);
+      // 防止 Redis 断连或其他致命错误导致死循环刷屏，暂停 1 秒
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+}
+
+// 启动
+startWorker();

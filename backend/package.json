@@ -4,12 +4,14 @@
   "description": "QQ Farm Game Backend - Agent API with Prisma + PostgreSQL + Redis",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc && npx prisma generate",
-    "start": "node dist/index.js",
-    "db:migrate": "npx prisma migrate deploy",
-    "db:push": "npx prisma db push",
-    "db:seed": "tsx prisma/seed.ts"
+    "dev": "ts-node-dev --respawn src/index.ts",
+    "dev:auth": "ts-node-dev --respawn src/auth-server.ts",
+    "start": "ts-node src/index.ts",
+    "start:auth": "ts-node src/auth-server.ts",
+    "start:worker": "ts-node src/worker.ts",
+    "build": "tsc", 
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push"
   },
   "keywords": [
     "game",

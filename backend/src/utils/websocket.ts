@@ -140,14 +140,3 @@ async function startMatureChecker() {
     }
   }, 5000);
 }
-
-export async function notifySteal(victimId: string, stealerName: string, cropName: string, amount: number, position: number) {
-    await prisma.notification.create({
-        data: {
-          playerId: victimId,
-          type: 'stolen',
-          message: `${stealerName} 偷走了你位置 ${position} 的 ${amount} 个 ${cropName}！`,
-          data: JSON.stringify({ stealerName, cropName, amount, position })
-        }
-    });
-}

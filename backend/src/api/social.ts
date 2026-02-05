@@ -113,32 +113,7 @@ router.get('/friends/:friendId/farm', authenticateApiKey, async (req: any, res) 
 router.post('/steal', authenticateApiKey, async (req: any, res) => {
   const { victimId, position } = req.body;
   try {
-    // result 可能是 { success: true, ... } 也可能是 { success: false, code: 'DOG_BITTEN', ... }
     const result = await FollowService.stealCrop(req.playerId, victimId, position);
-
-    const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
-    const victim = await prisma.player.findUnique({ where: { id: victimId }, select: { name: true } });
-
-    if (result.success) {
-        // 成功偷到
-        broadcast({
-            type: 'action',
-            action: 'STEAL',
-            playerId: req.playerId,
-            playerName: player?.name,
-            details: `从 ${victim?.name} 偷走了 ${result.stolen?.cropName}`
-        });
-    } else if (result.code === 'DOG_BITTEN') {
-        // 被狗咬了
-        broadcast({
-            type: 'action',
-            action: 'STEAL_FAIL',
-            playerId: req.playerId,
-            playerName: player?.name,
-            details: `去 ${victim?.name} 家偷菜被狗咬了，损失 ${result.penalty} 金币！`
-        });
-    }
-
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
