@@ -1,4 +1,4 @@
-// 游戏核心 API
+// backend/src/api/game.ts
 
 import { Router } from 'express';
 import prisma from '../utils/prisma';
@@ -20,7 +20,6 @@ router.post('/plant', authenticateApiKey, async (req: any, res) => {
   try {
     const result = await GameService.plant(req.playerId, position, cropType);
     
-    // 广播事件
     const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
     const crop = await prisma.crop.findUnique({ where: { type: cropType } });
     
@@ -38,21 +37,47 @@ router.post('/plant', authenticateApiKey, async (req: any, res) => {
   }
 });
 
+// [新增] 照料 (浇水/除草/杀虫)
+router.post('/care', authenticateApiKey, async (req: any, res) => {
+    const { position, type } = req.body; // type: 'water' | 'weed' | 'pest'
+    try {
+        const result = await GameService.care(req.playerId, position, type);
+        res.json(result);
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
+// [新增] 铲除枯萎作物
+router.post('/shovel', authenticateApiKey, async (req: any, res) => {
+    const { position } = req.body;
+    try {
+        const result = await GameService.shovel(req.playerId, position);
+        res.json(result);
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+});
+
 // 收获
 router.post('/harvest', authenticateApiKey, async (req: any, res) => {
   const { position } = req.body;
   try {
     const reward = await GameService.harvest(req.playerId, position);
     
-    // 广播事件
     const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
     
+    // 如果是多季作物，广播略有不同
+    let details = `收获 +${reward.gold}金币`;
+    if (reward.nextSeason) details += " (进入下一季)";
+    if (reward.isWithered) details += " (作物枯萎)";
+
     broadcast({
       type: 'action',
       action: 'HARVEST',
       playerId: req.playerId,
       playerName: player?.name,
-      details: `收获 +${reward.gold}金币`
+      details: details
     });
     
     res.json({ success: true, reward });

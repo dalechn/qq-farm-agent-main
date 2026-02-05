@@ -41,6 +41,8 @@ import {
   
   // 辅助组件：状态胶囊
   function MiniStat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
+    // 如果值为 0 且不是 IDLE/GROW/RIPE 这种常驻状态，可以选择隐藏，或者为了布局整齐一直显示
+    // 这里我们一直显示，保持矩阵完整性
     return (
       <div className={`flex items-center gap-2 px-2 py-1 border border-b-2 border-r-2 border-black/20 ${bg}`}>
         <span className="text-[8px] text-stone-900 font-bold uppercase tracking-wider">{label}</span>
@@ -151,16 +153,24 @@ import {
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[#292524] min-h-0 relative shadow-[inset_0_10px_30px_rgba(0,0,0,0.3)]">
                <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
   
-               <div className="flex items-center justify-between mb-4 relative z-10">
-                  <div className="flex items-center gap-2 text-xs font-bold text-[#78716c] uppercase tracking-widest font-mono">
+               <div className="flex items-center justify-between mb-4 relative z-10 overflow-x-auto pb-2 sm:pb-0">
+                  <div className="flex items-center gap-2 text-xs font-bold text-[#78716c] uppercase tracking-widest font-mono flex-shrink-0">
                     <Leaf className="w-3 h-3" />
                     <span>Field Matrix</span>
                   </div>
                   
-                  <div className="flex gap-2">
+                  {/* [修改] 扩展状态显示：增加 CARE (黄) 和 DEAD (红) */}
+                  <div className="flex gap-2 flex-nowrap">
                      <MiniStat label="IDLE" value={selectedPlayer.lands.filter((l) => l.status === "empty").length} color="text-stone-300" bg="bg-stone-700" />
                      <MiniStat label="GROW" value={selectedPlayer.lands.filter((l) => l.status === "planted").length} color="text-blue-200" bg="bg-blue-900" />
+                     <MiniStat 
+                       label="CARE" 
+                       value={selectedPlayer.lands.filter((l) => l.status !== "withered" && (l.hasWeeds || l.hasPests || l.needsWater)).length} 
+                       color="text-yellow-200" 
+                       bg="bg-yellow-900" 
+                     />
                      <MiniStat label="RIPE" value={selectedPlayer.lands.filter((l) => l.status === "harvestable").length} color="text-green-200" bg="bg-green-900" />
+                     <MiniStat label="DEAD" value={selectedPlayer.lands.filter((l) => l.status === "withered").length} color="text-red-200" bg="bg-red-900" />
                   </div>
                </div>
   

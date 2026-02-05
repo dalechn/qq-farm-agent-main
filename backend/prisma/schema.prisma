@@ -1,3 +1,5 @@
+// backend/prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -36,15 +38,24 @@ model Player {
 model Land {
   id        Int       @id @default(autoincrement())
   position  Int
-  status    String    @default("empty") // empty, planted, harvestable
+  // status 扩充: empty, planted, harvestable, withered (枯萎)
+  status    String    @default("empty") 
   cropType  String?
   plantedAt DateTime?
   matureAt  DateTime?
   player    Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
   playerId  String
   
-  // 被偷次数（每块地每次收获最多被偷3次）
+  // 被偷次数
   stolenCount Int     @default(0)
+
+  // [新增] 作物状态 (灾害)
+  hasWeeds    Boolean @default(false) // 杂草 -> 需要除草剂
+  hasPests    Boolean @default(false) // 虫害 -> 需要杀虫剂
+  needsWater  Boolean @default(false) // 干旱 -> 需要水壶
+  
+  // [新增] 多季作物记录
+  remainingHarvests Int @default(1) // 剩余收获次数
 
   @@unique([playerId, position])
 }
@@ -57,15 +68,19 @@ model Crop {
   matureTime Int    // 秒
   exp        Int
   yield      Int    @default(1)
+  
+  // [新增] 多季作物配置
+  maxHarvests Int    @default(1) // 总共可收获几季，默认为1
+  regrowTime  Int    @default(0) // 再生时间 (秒)，多季作物收完一季后进入下一季的时间
 }
 
-// 关注关系 (类似 Twitter/微博)
+// 关注关系
 model Follow {
   id          Int      @id @default(autoincrement())
   follower    Player   @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
-  followerId  String   // 关注者 (我)
+  followerId  String   
   following   Player   @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
-  followingId String   // 被关注者 (对方)
+  followingId String   
   createdAt   DateTime @default(now())
 
   @@unique([followerId, followingId])
@@ -80,8 +95,8 @@ model StealRecord {
   victimId  String
   landPos   Int
   cropType  String
-  amount    Int      // 偷到的数量
-  goldValue Int      // 偷到的金币价值
+  amount    Int      
+  goldValue Int      
   createdAt DateTime @default(now())
 }
 
@@ -90,9 +105,9 @@ model Notification {
   id        Int      @id @default(autoincrement())
   player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   playerId  String
-  type      String   // mature, stolen, new_follower, mutual_follow
+  type      String   
   message   String
-  data      String?  // JSON 数据
+  data      String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 }

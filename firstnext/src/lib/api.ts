@@ -5,7 +5,6 @@
 
 // Next.js 使用 NEXT_PUBLIC_ 前缀的环境变量
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:3001/ws';
 
 // 通用请求函数
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -26,16 +25,29 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   return response.json();
 }
 
+// 获取本地存储的 API Key 辅助函数
+const getAuthHeaders = () => {
+  const apiKey = typeof window !== 'undefined' ? localStorage.getItem('player_key') : '';
+  return apiKey ? { 'X-API-KEY': apiKey } : {};
+};
+
 // ==================== 类型定义 ====================
 
 export interface Land {
   id: number;
   position: number;
-  status: 'empty' | 'planted' | 'harvestable';
+  // [修改] 增加 withered 状态
+  status: 'empty' | 'planted' | 'harvestable' | 'withered';
   cropType: string | null;
   plantedAt: string | null;
   matureAt: string | null;
   stolenCount: number;
+  
+  // [新增] 灾害与多季状态
+  hasWeeds: boolean;
+  hasPests: boolean;
+  needsWater: boolean;
+  remainingHarvests: number;
 }
 
 export interface Player {
@@ -49,7 +61,6 @@ export interface Player {
   twitter?: string;
   createdAt: string;
   lands: Land[];
-  // [新增] 计数对象 (Prisma 格式)
   _count?: {
     followers: number;
     following: number;
@@ -64,6 +75,9 @@ export interface Crop {
   matureTime: number;
   exp: number;
   yield: number;
+  // [新增] 多季配置
+  maxHarvests: number;
+  regrowTime: number;
 }
 
 export interface Notification {
@@ -93,7 +107,7 @@ export interface StealRecord {
 }
 
 export interface ActionLog {
-  id?: string; // [New] 后端 UUID
+  id?: string;
   type: string;
   action: string;
   playerId: string;
@@ -102,7 +116,6 @@ export interface ActionLog {
   timestamp: string;
 }
 
-// [新增] 日志分页响应结构
 export interface PaginatedLogs {
   data: ActionLog[];
   pagination: {
@@ -113,7 +126,6 @@ export interface PaginatedLogs {
   };
 }
 
-// 分页响应接口结构
 export interface PaginatedPlayers {
   data: Player[];
   pagination: {
@@ -125,29 +137,60 @@ export interface PaginatedPlayers {
   };
 }
 
-// ==================== 公开 API ====================
+// ==================== 交互操作 API (自动携带 Auth) ====================
+
+export const plant = async (position: number, cropType: string) => {
+  return request<{ success: boolean }>('/plant', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ position, cropType }),
+  });
+};
+
+export const harvest = async (position: number) => {
+  return request<{ success: boolean; reward: { gold: number; exp: number } }>('/harvest', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ position }),
+  });
+};
+
+// [新增] 照料 (浇水/除草/杀虫)
+export const careLand = async (position: number, type: 'water' | 'weed' | 'pest') => {
+  return request<{ success: boolean; exp: number }>('/care', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ position, type }),
+  });
+};
+
+// [新增] 铲除枯萎作物
+export const shovelLand = async (position: number) => {
+  return request<{ success: boolean; exp: number }>('/shovel', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ position }),
+  });
+};
+
+// ==================== 公开/系统 API ====================
 
 export const publicApi = {
-  // [新增] 根据名称获取玩家信息 (调用后端的 /users/:name 接口)
   getPlayerByName: (name: string) =>
     request<Player>(`/users/${encodeURIComponent(name)}`),
 
-  // [修改] 获取所有玩家 - 支持分页和排行榜
   getPlayers: (page = 1, limit = 20) => 
     request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
 
-// [修改] 获取日志 - 支持分页
-getLogs: (playerId?: string, page = 1, limit = 50) => 
-  request<PaginatedLogs>(
-    playerId 
-      ? `/logs?playerId=${playerId}&page=${page}&limit=${limit}` 
-      : `/logs?page=${page}&limit=${limit}`
-  ),
+  getLogs: (playerId?: string, page = 1, limit = 50) => 
+    request<PaginatedLogs>(
+      playerId 
+        ? `/logs?playerId=${playerId}&page=${page}&limit=${limit}` 
+        : `/logs?page=${page}&limit=${limit}`
+    ),
 
-  // 获取作物列表
   getCrops: () => request<Crop[]>('/crops'),
 
-  // 创建玩家
   createPlayer: (name: string) =>
     request<Player>('/player', {
       method: 'POST',
@@ -155,74 +198,37 @@ getLogs: (playerId?: string, page = 1, limit = 50) =>
     }),
 };
 
-// ==================== Agent API (需要 API Key) ====================
+// ==================== Agent API (旧版兼容) ====================
 
 export function createAgentApi(apiKey: string) {
   const headers = { 'X-API-KEY': apiKey };
 
   return {
-    // 获取当前状态
     getMe: () => request<Player>('/me', { headers }),
-
-    // 种植作物
-    plant: (position: number, cropType: string) =>
-      request<{ success: boolean }>('/plant', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ position, cropType }),
-      }),
-
-    // 收获作物
-    harvest: (position: number) =>
-      request<{ success: boolean; reward: { gold: number; exp: number } }>('/harvest', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ position }),
-      }),
-
-    // 获取通知
     getNotifications: () => request<Notification[]>('/notifications', { headers }),
-
-    // 标记通知已读
     markNotificationsRead: (ids: number[]) =>
       request<{ success: boolean }>('/notifications/read', {
         method: 'POST',
         headers,
         body: JSON.stringify({ ids }),
       }),
-
-    // ==================== 关注系统 (Follower/Following) ====================
-
-    // 关注某人
     follow: (targetId: string) =>
       request<{ success: boolean; isMutual: boolean }>('/follow', {
         method: 'POST',
         headers,
         body: JSON.stringify({ targetId }),
       }),
-
-    // 取消关注
     unfollow: (targetId: string) =>
       request<{ success: boolean }>('/unfollow', {
         method: 'POST',
         headers,
         body: JSON.stringify({ targetId }),
       }),
-
-    // 获取我关注的人
     getFollowing: () => request<FollowUser[]>('/following', { headers }),
-
-    // 获取关注我的人
     getFollowers: () => request<FollowUser[]>('/followers', { headers }),
-
-    // 获取好友列表（互相关注的人）
     getFriends: () => request<FollowUser[]>('/friends', { headers }),
-
-    // 获取好友农场（需要互相关注）
     getFriendFarm: (friendId: string) =>
       request<Player>(`/friends/${friendId}/farm`, { headers }),
-
-    // 偷菜（需要互相关注）
     steal: (victimId: string, position: number) =>
       request<{
         success: boolean;
@@ -232,8 +238,6 @@ export function createAgentApi(apiKey: string) {
         headers,
         body: JSON.stringify({ victimId, position }),
       }),
-
-    // 获取偷菜记录
     getStealHistory: (type: 'stolen' | 'stealer' = 'stealer') =>
       request<StealRecord[]>(`/steal/history?type=${type}`, { headers }),
   };
