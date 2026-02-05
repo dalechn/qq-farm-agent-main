@@ -37,14 +37,11 @@ export interface Land {
   id: number;
   position: number;
   status: 'empty' | 'planted' | 'harvestable' | 'withered';
-  // [新增] 土地类型
   landType: 'normal' | 'red' | 'black' | 'gold'; 
   cropType: string | null;
   plantedAt: string | null;
   matureAt: string | null;
   stolenCount: number;
-  
-  // 灾害与多季状态
   hasWeeds: boolean;
   hasPests: boolean;
   needsWater: boolean;
@@ -62,11 +59,8 @@ export interface Player {
   twitter?: string;
   createdAt: string;
   lands: Land[];
-  
-  // [新增] 化肥库存
   fertilizers: number;
   highFertilizers: number;
-  
   _count?: {
     followers: number;
     following: number;
@@ -81,9 +75,7 @@ export interface Crop {
   matureTime: number;
   exp: number;
   yield: number;
-  // [新增] 种植限制
   requiredLandType?: string; 
-  // 多季配置
   maxHarvests: number;
   regrowTime: number;
 }
@@ -145,6 +137,18 @@ export interface PaginatedPlayers {
   };
 }
 
+// [新增] 分页关注/粉丝列表
+export interface PaginatedFollows {
+  data: FollowUser[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasMore: boolean;
+  };
+}
+
 // ==================== 交互操作 API (自动携带 Auth) ====================
 
 export const plant = async (position: number, cropType: string) => {
@@ -163,7 +167,6 @@ export const harvest = async (position: number) => {
   });
 };
 
-// 照料 (浇水/除草/杀虫)
 export const careLand = async (position: number, type: 'water' | 'weed' | 'pest') => {
   return request<{ success: boolean; exp: number }>('/care', {
     method: 'POST',
@@ -172,7 +175,6 @@ export const careLand = async (position: number, type: 'water' | 'weed' | 'pest'
   });
 };
 
-// 铲除枯萎作物
 export const shovelLand = async (position: number) => {
   return request<{ success: boolean; exp: number }>('/shovel', {
     method: 'POST',
@@ -181,7 +183,6 @@ export const shovelLand = async (position: number) => {
   });
 };
 
-// [新增] 扩建土地
 export const expandLand = async () => {
   return request<{ success: boolean; newPosition: number; cost: number }>('/land/expand', {
     method: 'POST',
@@ -189,7 +190,6 @@ export const expandLand = async () => {
   });
 };
 
-// [新增] 升级土地
 export const upgradeLand = async (position: number) => {
   return request<{ success: boolean }>('/land/upgrade', {
     method: 'POST',
@@ -198,7 +198,6 @@ export const upgradeLand = async (position: number) => {
   });
 };
 
-// [新增] 使用化肥
 export const useFertilizer = async (position: number, type: 'normal' | 'high') => {
   return request<{ success: boolean; newMatureAt: string }>('/item/fertilizer', {
     method: 'POST',
@@ -206,6 +205,33 @@ export const useFertilizer = async (position: number, type: 'normal' | 'high') =
     body: JSON.stringify({ position, type }),
   });
 };
+
+// [新增] 狗相关 API
+export const buyDog = async () => {
+  return request<{ success: boolean; message?: string }>('/dog/buy', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+};
+
+export const feedDog = async () => {
+  return request<{ success: boolean; message?: string }>('/dog/feed', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+  });
+};
+
+// [新增] 社交相关 API (Top-level)
+// 获取指定用户的关注列表 (公开, 支持分页)
+export const getFollowing = async (userId: string, page = 1, limit = 20) => {
+  return request<PaginatedFollows>(`/following?userId=${userId}&page=${page}&limit=${limit}`);
+};
+
+// 获取指定用户的粉丝列表 (公开, 支持分页)
+export const getFollowers = async (userId: string, page = 1, limit = 20) => {
+  return request<PaginatedFollows>(`/followers?userId=${userId}&page=${page}&limit=${limit}`);
+};
+
 
 // ==================== 公开/系统 API ====================
 
@@ -232,7 +258,7 @@ export const publicApi = {
     }),
 };
 
-// ==================== Agent API (旧版兼容) ====================
+// ==================== Agent API (旧版兼容/完整实例) ====================
 
 export function createAgentApi(apiKey: string) {
   const headers = { 'X-API-KEY': apiKey };
@@ -258,8 +284,12 @@ export function createAgentApi(apiKey: string) {
         headers,
         body: JSON.stringify({ targetId }),
       }),
-    getFollowing: () => request<FollowUser[]>('/following', { headers }),
-    getFollowers: () => request<FollowUser[]>('/followers', { headers }),
+    // [修改] 支持分页
+    getFollowing: (page = 1, limit = 20) =>
+      request<PaginatedFollows>(`/following?page=${page}&limit=${limit}`, { headers }),
+    getFollowers: (page = 1, limit = 20) =>
+      request<PaginatedFollows>(`/followers?page=${page}&limit=${limit}`, { headers }),
+    
     getFriends: () => request<FollowUser[]>('/friends', { headers }),
     getFriendFarm: (friendId: string) =>
       request<Player>(`/friends/${friendId}/farm`, { headers }),

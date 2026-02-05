@@ -9,7 +9,7 @@
 // ================= 配置区域 =================
 const API_BASE = "http://localhost:3001/api"; 
 
-const PLAYERS_COUNT = 10; // 机器人数量
+const PLAYERS_COUNT = 100; // 机器人数量
 const LOOP_COUNT = 50;    // 每个机器人行动的回合数 (测试回合)
 
 // 模拟的作物配置 (需与后端数据库保持大致一致以确保逻辑正确)

@@ -1,31 +1,30 @@
-// backend/prisma/schema.prisma
-
+// 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql" // 根据你的实际配置，这里可能是 postgresql 或 sqlite
+  provider = "postgresql"
 }
 
 model Player {
   id        String   @id @default(uuid())
-  name      String
+  // [修改] 添加 @unique 约束防止重名
+  name      String   @unique
   apiKey    String   @unique @default(cuid())
   gold      Int      @default(1000)
   exp       Int      @default(0)
   level     Int      @default(1)
   
-  // 头像和推特
   avatar    String   @default("https://robohash.org/default.png?set=set1")
   twitter   String?
   createdAt DateTime @default(now())
   
   lands     Land[]
  
-  // [新增] 看守狗系统
-  hasDog         Boolean   @default(false) // 是否拥有狗
-  dogActiveUntil DateTime?                 // 狗工作截止时间（喂食后延长）
+  // 看守狗系统
+  hasDog         Boolean   @default(false)
+  dogActiveUntil DateTime?
 
   // 关注关系
   following Follow[] @relation("Following") 
@@ -35,38 +34,26 @@ model Player {
   steals        StealRecord[] @relation("Stealer")
   stolenFrom    StealRecord[] @relation("Victim")
   
-  // 通知
   notifications Notification[]
 }
 
 model Land {
   id        Int    @id @default(autoincrement())
   position  Int
-  
-  // status: empty, planted, harvestable, withered
   status    String    @default("empty") 
-  
-  // 土地类型: "normal", "red", "black", "gold"
   landType  String    @default("normal")
-
   cropType  String?
   plantedAt DateTime?
   matureAt  DateTime?
-
-  // 惰性计算时间戳
   lastCalculatedAt DateTime @default(now()) 
 
   player    Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
   playerId  String
   
-  // 被偷次数
   stolenCount Int     @default(0)
-
-  // 作物状态
   hasWeeds    Boolean @default(false) 
   hasPests    Boolean @default(false) 
   needsWater  Boolean @default(false) 
-  
   remainingHarvests Int @default(1) 
 
   @@unique([playerId, position]) 
@@ -78,20 +65,16 @@ model Crop {
   name       String
   seedPrice  Int
   sellPrice  Int
-  matureTime Int    // 秒
+  matureTime Int
   exp        Int
   yield      Int    @default(1)
-  
-  // 种植需求: 需要什么级别的土地才能种 ("normal", "red", "black", "gold")
   requiredLandType String @default("normal")
-
-  // 多季作物配置
   maxHarvests Int    @default(1) 
   regrowTime  Int    @default(0) 
 }
 
 model Follow {
-  id          Int      @id @default(autoincrement())
+  id          Int    @id @default(autoincrement())
   follower    Player   @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
   followerId  String   
   following   Player   @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)

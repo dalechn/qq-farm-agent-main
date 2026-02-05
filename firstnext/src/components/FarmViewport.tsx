@@ -1,19 +1,22 @@
-import { 
-    Sprout, 
-    Loader2, 
-    Leaf, 
-    Coins, 
+import {
+    Sprout,
+    Loader2,
+    Leaf,
+    Coins,
     Twitter,
     ArrowLeft,
-    Bug, 
+    Bug,
+    X,
   } from "lucide-react";
   import { useRouter } from "next/navigation";
-  import { type Player } from "@/lib/api";
+  import { type Player, type FollowUser, getFollowers, getFollowing } from "@/lib/api";
   import { LandTile } from "@/components/LandTile";
-  import { useState, useEffect, useRef } from "react";
-  
+  import { useState, useEffect } from "react";
+
   import { PatrolDog } from "@/components/PatrolDog";
-  
+  import { DebugSidebar } from "@/components/DebugSidebar";
+  import { UserListSidebar } from "@/components/UserListSidebar";
+
   // 辅助组件：面板标题
   function PanelHeader({ 
     title, 
@@ -47,7 +50,7 @@ import {
     );
   }
   
-  // 辅助组件：状态胶囊 (已更新 value 类型支持 string)
+  // 辅助组件：状态胶囊
   function MiniStat({ label, value, color, bg }: { label: string; value: number | string; color: string; bg: string }) {
     return (
       <div className={`flex items-center gap-2 px-2 py-1 border border-b-2 border-r-2 border-black/20 ${bg}`}>
@@ -63,9 +66,9 @@ import {
     isPlayerLoading: boolean;
     showOnMobile: boolean;
   }
-  
-  const TOTAL_LAND_SLOTS = 18;
 
+  const TOTAL_LAND_SLOTS = 18;
+  
   export function FarmViewport({ 
     selectedPlayer, 
     isSearching, 
@@ -75,45 +78,53 @@ import {
     const router = useRouter();
     const isLoading = isSearching || isPlayerLoading;
     
-    // 调试状态
-    const [debugMode, setDebugMode] = useState(false);
+    // [修改] 控制调试侧边栏的状态
+    const [showDebugSidebar, setShowDebugSidebar] = useState(false);
 
-    // 计算狗是否处于激活状态 (使用 State 确保倒计时更新，或仅在渲染时计算)
-    // 这里简化为渲染时计算，因为 MiniStat 不包含倒计时动画
+    // [新增] 用户列表弹窗状态
+    const [isUserListSidebarOpen, setIsUserListSidebarOpen] = useState(false);
+    const [userListSidebarType, setUserListSidebarType] = useState<'following' | 'followers'>('following');
+    const [userListPlayerId, setUserListPlayerId] = useState<string>('');
+    
+    // 保留 debugMode 状态用于前端视觉调试（如强制显示狗的特定状态），如果不需要可以移除
+    // 这里暂时设为 false，主要逻辑移交给 Sidebar
+    const debugMode = false; 
+  
+    // 计算狗是否处于激活状态
     const now = new Date();
     // @ts-ignore: 假设 Player 接口中有 dogActiveUntil 和 hasDog
     const activeUntil = selectedPlayer?.dogActiveUntil ? new Date(selectedPlayer.dogActiveUntil) : null;
     // @ts-ignore
     const hasDog = !!selectedPlayer?.hasDog;
     const isDogActive = !!(hasDog && activeUntil && activeUntil > now);
-
+  
     const [remainingTime, setRemainingTime] = useState<string | null>(null);
-
+  
     useEffect(() => {
         if (!activeUntil) {
             setRemainingTime(null);
             return;
         }
-
+  
         const updateTime = () => {
             const now = new Date();
             const diff = activeUntil.getTime() - now.getTime();
-
+  
             if (diff <= 0) {
                 setRemainingTime(null);
                 return;
             }
-
+  
             const minutes = Math.floor((diff / 1000 / 60) % 60);
             const hours = Math.floor((diff / 1000 / 60 / 60));
             setRemainingTime(`${hours}h ${minutes}m`);
         };
-
+  
         updateTime();
         const interval = setInterval(updateTime, 1000);
         return () => clearInterval(interval);
     }, [activeUntil, debugMode]);
-
+  
     // 计算 Security 状态显示的配置
     let secConfig = { value: "NULL", color: "text-stone-500", bg: "bg-stone-800" };
     if (hasDog) {
@@ -130,22 +141,35 @@ import {
   
     return (
       <section className={`flex-1 flex flex-col bg-[#292524] min-w-0 relative ${!showOnMobile ? 'hidden lg:flex' : 'flex'}`}>
+        
+        {/* [新增] 调试侧边栏组件 */}
+        <DebugSidebar
+            isOpen={showDebugSidebar}
+            onClose={() => setShowDebugSidebar(false)}
+            currentPlayerId={selectedPlayer?.id}
+        />
+
+        {/* [新增] 用户列表弹窗 */}
+        <UserListSidebar
+            isOpen={isUserListSidebarOpen}
+            onClose={() => setIsUserListSidebarOpen(false)}
+            type={userListSidebarType}
+            playerId={userListPlayerId}
+        />
+  
         <PanelHeader 
           title="VIEWPORT" 
           icon={Sprout} 
           showBack={showOnMobile}
           onBack={() => router.push('/')}
           rightContent={
+              // [修改] 按钮点击打开 Sidebar
               <button 
-                onClick={() => setDebugMode(!debugMode)}
-                className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono border transition-all ${
-                    debugMode 
-                    ? 'bg-red-900/50 border-red-500 text-red-300 animate-pulse' 
-                    : 'bg-stone-900 border-stone-700 text-stone-500 hover:text-stone-300'
-                }`}
+                onClick={() => setShowDebugSidebar(true)}
+                className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono border transition-all bg-stone-900 border-stone-700 text-stone-500 hover:text-stone-300 hover:border-orange-500 hover:text-orange-500`}
               >
                   <Bug className="w-3 h-3" />
-                  <span>DEBUG: {debugMode ? 'ON' : 'OFF'}</span>
+                  <span>DEBUG PANEL</span>
               </button>
           }
         />
@@ -201,9 +225,27 @@ import {
                       )}
   
                       <div className="flex items-center gap-3 text-[10px] text-stone-400 bg-stone-900/50 px-2 py-0.5 border border-stone-800 font-mono whitespace-nowrap">
-                         <span className="text-white font-bold">{selectedPlayer._count?.following || 0}</span> <span className="text-[8px] uppercase">Following</span>
+                         <button
+                            onClick={() => {
+                                setUserListSidebarType('following');
+                                setUserListPlayerId(selectedPlayer.id);
+                                setIsUserListSidebarOpen(true);
+                            }}
+                            className="hover:text-orange-400 transition-colors"
+                         >
+                            <span className="text-white font-bold">{selectedPlayer._count?.following || 0}</span> <span className="text-[8px] uppercase">Following</span>
+                         </button>
                          <span className="w-px h-2 bg-stone-700"></span>
-                         <span className="text-white font-bold">{selectedPlayer._count?.followers || 0}</span> <span className="text-[8px] uppercase">Followers</span>
+                         <button
+                            onClick={() => {
+                                setUserListSidebarType('followers');
+                                setUserListPlayerId(selectedPlayer.id);
+                                setIsUserListSidebarOpen(true);
+                            }}
+                            className="hover:text-orange-400 transition-colors"
+                         >
+                            <span className="text-white font-bold">{selectedPlayer._count?.followers || 0}</span> <span className="text-[8px] uppercase">Followers</span>
+                         </button>
                       </div>
                     </div>
                   </div>
@@ -247,7 +289,7 @@ import {
                      <MiniStat label="RIPE" value={selectedPlayer.lands.filter((l) => l.status === "harvestable").length} color="text-green-200" bg="bg-green-900" />
                      <MiniStat label="DEAD" value={selectedPlayer.lands.filter((l) => l.status === "withered").length} color="text-red-200" bg="bg-red-900" />
                      
-                     {/* [新增] Security Status MiniStat */}
+                     {/* Security Status MiniStat */}
                      <MiniStat 
                         label="SEC" 
                         value={secConfig.value} 
@@ -261,7 +303,7 @@ import {
               <div className="relative max-w-2xl mx-auto">
                   {/* 巡逻狗层 */}
                   <PatrolDog isActive={isDogActive} isDebug={debugMode} />
-
+  
                   {/* 土地 Grid */}
                   <div className="grid grid-cols-3 gap-6 relative z-10">
                     {Array.from({ length: TOTAL_LAND_SLOTS }).map((_, index) => {
