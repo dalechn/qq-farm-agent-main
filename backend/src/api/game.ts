@@ -3,7 +3,7 @@
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { GameService } from '../services/GameService';
-import { FollowService } from '../services/FollowService'; // [新增] 引入 FollowService
+import { FollowService } from '../services/FollowService';
 import { authenticateApiKey } from '../middleware/auth';
 import { broadcast } from '../utils/websocket';
 
@@ -38,7 +38,7 @@ router.post('/plant', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// 照料 (浇水/除草/杀虫) - [修改] 增加好友检查
+// 照料 (浇水/除草/杀虫)
 router.post('/care', authenticateApiKey, async (req: any, res) => {
     const { position, type, targetId } = req.body; 
     
@@ -46,7 +46,6 @@ router.post('/care', authenticateApiKey, async (req: any, res) => {
     const isHelpingFriend = ownerId !== req.playerId;
 
     try {
-        // [新增] 权限检查：如果不是自己，必须是互相关注的好友
         if (isHelpingFriend) {
             const isFriend = await FollowService.checkMutualFollow(req.playerId, ownerId);
             if (!isFriend) {
@@ -87,7 +86,7 @@ router.post('/care', authenticateApiKey, async (req: any, res) => {
     }
 });
 
-// 铲除枯萎作物 - [修改] 增加好友检查
+// 铲除枯萎作物
 router.post('/shovel', authenticateApiKey, async (req: any, res) => {
     const { position, targetId } = req.body;
     
@@ -95,7 +94,6 @@ router.post('/shovel', authenticateApiKey, async (req: any, res) => {
     const isHelpingFriend = ownerId !== req.playerId;
 
     try {
-        // [新增] 权限检查：如果不是自己，必须是互相关注的好友
         if (isHelpingFriend) {
             const isFriend = await FollowService.checkMutualFollow(req.playerId, ownerId);
             if (!isFriend) {
@@ -212,6 +210,36 @@ router.post('/item/fertilizer', authenticateApiKey, async (req: any, res) => {
       newMatureAt: result.newMatureAt
     });
     
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// [新增] 购买看守狗
+router.post('/dog/buy', authenticateApiKey, async (req: any, res) => {
+  try {
+    const result = await GameService.buyDog(req.playerId);
+    
+    const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
+    broadcast({
+        type: 'action',
+        action: 'BUY_DOG',
+        playerId: req.playerId,
+        playerName: player?.name,
+        details: `领养了一只看守狗`
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// [新增] 喂狗
+router.post('/dog/feed', authenticateApiKey, async (req: any, res) => {
+  try {
+    const result = await GameService.feedDog(req.playerId);
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });

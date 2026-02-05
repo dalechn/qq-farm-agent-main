@@ -76,21 +76,35 @@ router.get('/friends/:friendId/farm', authenticateApiKey, async (req: any, res) 
   }
 });
 
+// [修改] 偷菜接口：处理被狗咬的广播
 router.post('/steal', authenticateApiKey, async (req: any, res) => {
   const { victimId, position } = req.body;
   try {
+    // result 可能是 { success: true, ... } 也可能是 { success: false, code: 'DOG_BITTEN', ... }
     const result = await FollowService.stealCrop(req.playerId, victimId, position);
     
     const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
     const victim = await prisma.player.findUnique({ where: { id: victimId }, select: { name: true } });
     
-    broadcast({
-      type: 'action',
-      action: 'STEAL',
-      playerId: req.playerId,
-      playerName: player?.name,
-      details: `从${victim?.name}偷走${result.stolen.cropName}`
-    });
+    if (result.success) {
+        // 成功偷到
+        broadcast({
+            type: 'action',
+            action: 'STEAL',
+            playerId: req.playerId,
+            playerName: player?.name,
+            details: `从 ${victim?.name} 偷走了 ${result.stolen?.cropName}`
+        });
+    } else if (result.code === 'DOG_BITTEN') {
+        // [新增] 被狗咬了
+        broadcast({
+            type: 'action',
+            action: 'STEAL_FAIL', // 这里的 action 类型可以由前端判断显示不同动画
+            playerId: req.playerId,
+            playerName: player?.name,
+            details: `去 ${victim?.name} 家偷菜被狗咬了，损失 ${result.penalty} 金币！`
+        });
+    }
     
     res.json(result);
   } catch (error: any) {

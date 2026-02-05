@@ -1,13 +1,10 @@
-// backend/src/config/game.ts
+// backend/src/config/game-keys.ts
 
-// ==========================================
-// 1. 土地配置
-// ==========================================
 export const GAME_CONFIG = {
   LAND: {
     INITIAL_COUNT: 6,      // 初始土地数量
     MAX_LIMIT: 18,         // 最大土地数
-    EXPAND_BASE_COST: 1000 // 扩建基础价格 (第7块=1000, 第8块=2000...)
+    EXPAND_BASE_COST: 1000 // 扩建基础价格
   },
   
   // 土地等级与升级配置
@@ -20,31 +17,37 @@ export const GAME_CONFIG = {
     gold:   { price: 0,      next: '',      levelReq: 999 }
   },
 
-  // 化肥配置
+  // 化肥配置 [修改：增加价格]
   FERTILIZER: {
     normal: { 
-      price: 50,           // [新增] 价格：50金币
+      price: 50,           // 50金币
       reduceSeconds: 3600  // 减1小时
-    }, 
+    },
     high: { 
-      price: 200,          // [新增] 价格：200金币
+      price: 200,          // 200金币
       reduceSeconds: 14400 // 减4小时
-    } 
+    }
   },
 
-  // 灾害概率 (每分钟发生的几率, 1=100%, 建议 0.05=5%)
+  // [新增] 看守狗配置
+  DOG: {
+    PRICE: 2000,          // 买狗价格
+    FOOD_PRICE: 200,      // 狗粮价格
+    FOOD_DURATION: 86400, // 一份狗粮管24小时 (秒)
+    BITE_RATE: 0.3,       // 咬人概率 (30%)
+    PENALTY_GOLD: 300     // 咬住后罚款金额
+  },
+
+  // 灾害概率
   BASE_RATES: {
-    WEED: 1,  // 调试用 100%
-    PEST: 1,  // 调试用 100%
-    WATER: 1  // 调试用 100%
+    WEED: 1,
+    PEST: 1,
+    WATER: 1
   }
 };
 
-// ==========================================
-// 2. 作物配置 (需与前端 firstnext/src/lib/api.ts 保持一致)
-// ==========================================
 export const CROPS = [
-  // [普通土地] 适合新手
+  // [普通土地]
   { 
     type: 'radish', 
     name: '白萝卜', 
@@ -94,7 +97,7 @@ export const CROPS = [
     requiredLandType: 'normal'
   },
 
-  // [红土地] 进阶作物
+  // [红土地]
   { 
     type: 'strawberry', 
     name: '草莓', 
@@ -132,7 +135,7 @@ export const CROPS = [
     requiredLandType: 'red'
   },
 
-  // [黑土地] 高级作物
+  // [黑土地]
   {
     type: 'pumpkin', 
     name: '南瓜',
@@ -146,4 +149,3 @@ export const CROPS = [
     requiredLandType: 'black'
   }
 ];
-

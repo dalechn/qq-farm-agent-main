@@ -18,11 +18,15 @@ model Player {
   
   // 头像和推特
   avatar    String   @default("https://robohash.org/default.png?set=set1")
-  twitter   String?  
-
+  twitter   String?
   createdAt DateTime @default(now())
+  
   lands     Land[]
  
+  // [新增] 看守狗系统
+  hasDog         Boolean   @default(false) // 是否拥有狗
+  dogActiveUntil DateTime?                 // 狗工作截止时间（喂食后延长）
+
   // 关注关系
   following Follow[] @relation("Following") 
   followers Follow[] @relation("Followers") 
@@ -36,13 +40,13 @@ model Player {
 }
 
 model Land {
-  id        Int       @id @default(autoincrement())
+  id        Int    @id @default(autoincrement())
   position  Int
   
   // status: empty, planted, harvestable, withered
   status    String    @default("empty") 
   
-  // [新增] 土地类型: "normal", "red", "black", "gold"
+  // 土地类型: "normal", "red", "black", "gold"
   landType  String    @default("normal")
 
   cropType  String?
@@ -78,15 +82,13 @@ model Crop {
   exp        Int
   yield      Int    @default(1)
   
-  // [新增] 种植需求: 需要什么级别的土地才能种 ("normal", "red", "black", "gold")
+  // 种植需求: 需要什么级别的土地才能种 ("normal", "red", "black", "gold")
   requiredLandType String @default("normal")
 
   // 多季作物配置
   maxHarvests Int    @default(1) 
   regrowTime  Int    @default(0) 
 }
-
-// --- 以下保持原样 ---
 
 model Follow {
   id          Int      @id @default(autoincrement())

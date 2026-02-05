@@ -1,6 +1,11 @@
+// backend/src/services/FollowService.ts
+
 import prisma from '../utils/prisma';
 import { sendToPlayer, notifySteal } from '../utils/websocket';
 import { acquireLock, releaseLock, updateLeaderboard } from '../utils/redis';
+import { GAME_CONFIG } from '../config/game-keys'; // [新增] 引入配置
+
+const DOG_CONFIG = GAME_CONFIG.DOG; // [新增]
 
 export class FollowService {
   // 关注某人
@@ -196,14 +201,13 @@ export class FollowService {
     return friend;
   }
 
-  // 偷菜 - 只有好友（互相关注）才能偷
-  // [NEW] 增加了分布式锁和排行榜更新
+  // [修改] 偷菜 - 增加看守狗逻辑
   static async stealCrop(stealerId: string, victimId: string, position: number) {
     if (stealerId === victimId) {
       throw new Error('Cannot steal from yourself');
     }
 
-    // 1. 定义锁的 Key：锁定特定受害者的特定地块位置，防止多人同时偷同一块地
+    // 1. 定义锁的 Key
     const lockKey = `lock:steal:${victimId}:${position}`;
 
     // 2. 尝试获取锁 (3秒过期)
@@ -218,6 +222,51 @@ export class FollowService {
       if (!isMutual) {
         throw new Error('Not mutual followers (not friends)');
       }
+
+      // [新增逻辑] 检查看守狗 =========================================
+      const victim = await prisma.player.findUnique({ 
+          where: { id: victimId },
+          select: { name: true, hasDog: true, dogActiveUntil: true, gold: true }
+      });
+      
+      const now = new Date();
+      // 只有买过狗且狗粮没过期的才有效
+      const isDogActive = victim?.hasDog && victim.dogActiveUntil && victim.dogActiveUntil > now;
+
+      // 如果狗是醒着的，进行概率判定
+      if (isDogActive && Math.random() < DOG_CONFIG.BITE_RATE) {
+          // --- 触发咬人逻辑 ---
+          const stealer = await prisma.player.findUnique({ where: { id: stealerId } });
+          
+          // 扣除偷菜者金币 (如果钱不够，就扣光)
+          const penalty = Math.min(stealer?.gold || 0, DOG_CONFIG.PENALTY_GOLD);
+          
+          if (penalty > 0) {
+              // 偷窃者扣钱
+              await prisma.player.update({
+                  where: { id: stealerId },
+                  data: { gold: { decrement: penalty } }
+              });
+              // 被偷者获得补偿 (狗捡回来的)
+              await prisma.player.update({
+                  where: { id: victimId },
+                  data: { gold: { increment: penalty } }
+              });
+          }
+
+          // 发送通知
+          const stealerName = stealer?.name || '有人';
+          await notifySteal(victimId, stealerName, 'nothing', 0, position); 
+          
+          // 返回失败状态
+          return {
+              success: false,
+              code: 'DOG_BITTEN',
+              message: `哎呀！被 ${victim?.name} 的恶犬咬了一口，掉落了 ${penalty} 金币！`,
+              penalty
+          };
+      }
+      // [新增逻辑结束] ===============================================
 
       // 获取土地信息
       const land = await prisma.land.findUnique({
@@ -285,7 +334,7 @@ export class FollowService {
       // 发送通知
       await notifySteal(victimId, stealer?.name || 'Unknown', crop.name, stealAmount, position);
 
-      // [NEW] 更新 Redis 金币排行榜
+      // 更新 Redis 金币排行榜
       updateLeaderboard('gold', stealerId, updatedStealer.gold).catch(console.error);
 
       return {

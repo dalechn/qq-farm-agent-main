@@ -1,48 +1,54 @@
-// src/components/FarmViewport.tsx
-
 import { 
     Sprout, 
     Loader2, 
     Leaf, 
     Coins, 
     Twitter,
-    ArrowLeft
+    ArrowLeft,
+    Bug, 
   } from "lucide-react";
   import { useRouter } from "next/navigation";
   import { type Player } from "@/lib/api";
   import { LandTile } from "@/components/LandTile";
+  import { useState, useEffect, useRef } from "react";
+  
+  import { PatrolDog } from "@/components/PatrolDog";
   
   // 辅助组件：面板标题
   function PanelHeader({ 
     title, 
     icon: Icon, 
     showBack, 
-    onBack 
+    onBack,
+    rightContent 
   }: { 
     title: string, 
     icon: any, 
     showBack?: boolean, 
-    onBack?: () => void 
+    onBack?: () => void,
+    rightContent?: React.ReactNode
   }) {
     return (
-      <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center px-3 gap-2 select-none">
-        {/* [新增] 移动端返回按钮 */}
-        {showBack && (
-          <button 
-            onClick={onBack} 
-            className="mr-1 text-stone-400 hover:text-white lg:hidden p-1 hover:bg-stone-700 rounded-sm transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-        )}
-        <Icon className="w-4 h-4 text-stone-400" />
-        <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
+      <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center justify-between px-3 select-none">
+        <div className="flex items-center gap-2">
+            {showBack && (
+            <button 
+                onClick={onBack} 
+                className="mr-1 text-stone-400 hover:text-white lg:hidden p-1 hover:bg-stone-700 rounded-sm transition-colors"
+            >
+                <ArrowLeft className="w-4 h-4" />
+            </button>
+            )}
+            <Icon className="w-4 h-4 text-stone-400" />
+            <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
+        </div>
+        {rightContent}
       </div>
     );
   }
   
-  // 辅助组件：状态胶囊
-  function MiniStat({ label, value, color, bg }: { label: string; value: number; color: string; bg: string }) {
+  // 辅助组件：状态胶囊 (已更新 value 类型支持 string)
+  function MiniStat({ label, value, color, bg }: { label: string; value: number | string; color: string; bg: string }) {
     return (
       <div className={`flex items-center gap-2 px-2 py-1 border border-b-2 border-r-2 border-black/20 ${bg}`}>
         <span className="text-[8px] text-stone-900 font-bold uppercase tracking-wider">{label}</span>
@@ -55,10 +61,9 @@ import {
     selectedPlayer: Player | null;
     isSearching: boolean;
     isPlayerLoading: boolean;
-    showOnMobile: boolean; // 控制在移动端的显示逻辑
+    showOnMobile: boolean;
   }
   
-  // [修改] 定义总土地格子数
   const TOTAL_LAND_SLOTS = 18;
 
   export function FarmViewport({ 
@@ -69,15 +74,80 @@ import {
   }: FarmViewportProps) {
     const router = useRouter();
     const isLoading = isSearching || isPlayerLoading;
+    
+    // 调试状态
+    const [debugMode, setDebugMode] = useState(false);
+
+    // 计算狗是否处于激活状态 (使用 State 确保倒计时更新，或仅在渲染时计算)
+    // 这里简化为渲染时计算，因为 MiniStat 不包含倒计时动画
+    const now = new Date();
+    // @ts-ignore: 假设 Player 接口中有 dogActiveUntil 和 hasDog
+    const activeUntil = selectedPlayer?.dogActiveUntil ? new Date(selectedPlayer.dogActiveUntil) : null;
+    // @ts-ignore
+    const hasDog = !!selectedPlayer?.hasDog;
+    const isDogActive = !!(hasDog && activeUntil && activeUntil > now);
+
+    const [remainingTime, setRemainingTime] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (!activeUntil) {
+            setRemainingTime(null);
+            return;
+        }
+
+        const updateTime = () => {
+            const now = new Date();
+            const diff = activeUntil.getTime() - now.getTime();
+
+            if (diff <= 0) {
+                setRemainingTime(null);
+                return;
+            }
+
+            const minutes = Math.floor((diff / 1000 / 60) % 60);
+            const hours = Math.floor((diff / 1000 / 60 / 60));
+            setRemainingTime(`${hours}h ${minutes}m`);
+        };
+
+        updateTime();
+        const interval = setInterval(updateTime, 1000);
+        return () => clearInterval(interval);
+    }, [activeUntil, debugMode]);
+
+    // 计算 Security 状态显示的配置
+    let secConfig = { value: "NULL", color: "text-stone-500", bg: "bg-stone-800" };
+    if (hasDog) {
+        if (debugMode) {
+            const randomMin = Math.floor(Math.random() * 120) + 10;
+            const displayTime = `${Math.floor(randomMin / 60)}h ${randomMin % 60}m`;
+            secConfig = { value: displayTime, color: "text-cyan-200", bg: "bg-cyan-950" };
+        } else if (isDogActive) {
+             secConfig = { value: remainingTime || "0m", color: "text-cyan-200", bg: "bg-cyan-950" };
+        } else {
+            secConfig = { value: "LOW", color: "text-orange-200", bg: "bg-orange-950" };
+        }
+    }
   
     return (
       <section className={`flex-1 flex flex-col bg-[#292524] min-w-0 relative ${!showOnMobile ? 'hidden lg:flex' : 'flex'}`}>
-        {/* [修改] 传入返回逻辑 */}
         <PanelHeader 
           title="VIEWPORT" 
           icon={Sprout} 
           showBack={showOnMobile}
           onBack={() => router.push('/')}
+          rightContent={
+              <button 
+                onClick={() => setDebugMode(!debugMode)}
+                className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono border transition-all ${
+                    debugMode 
+                    ? 'bg-red-900/50 border-red-500 text-red-300 animate-pulse' 
+                    : 'bg-stone-900 border-stone-700 text-stone-500 hover:text-stone-300'
+                }`}
+              >
+                  <Bug className="w-3 h-3" />
+                  <span>DEBUG: {debugMode ? 'ON' : 'OFF'}</span>
+              </button>
+          }
         />
   
         {isLoading ? (
@@ -140,13 +210,15 @@ import {
                 </div>
   
                 {/* 右侧：Credits */}
-                <div className="text-right flex-none ml-2">
-                   <div className="flex items-center justify-end gap-1.5 text-[10px] text-yellow-600 uppercase font-bold mb-1 font-mono tracking-widest">
-                      <Coins className="w-3 h-3" />
-                      <span>Credits</span>
-                   </div>
-                   <div className="text-3xl font-mono font-bold text-yellow-500 drop-shadow-[2px_2px_0_rgba(0,0,0,0.8)]">
-                     {selectedPlayer.gold.toLocaleString()}
+                <div className="text-right flex-none ml-2 flex flex-col items-end gap-4">
+                   <div>
+                       <div className="flex items-center justify-end gap-1.5 text-[10px] text-yellow-600 uppercase font-bold mb-1 font-mono tracking-widest">
+                          <Coins className="w-3 h-3" />
+                          <span>Credits</span>
+                       </div>
+                       <div className="text-3xl font-mono font-bold text-yellow-500 drop-shadow-[2px_2px_0_rgba(0,0,0,0.8)]">
+                         {selectedPlayer.gold.toLocaleString()}
+                       </div>
                    </div>
                 </div>
               </div>
@@ -156,13 +228,13 @@ import {
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[#292524] min-h-0 relative shadow-[inset_0_10px_30px_rgba(0,0,0,0.3)]">
                <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
   
+               {/* 顶部统计栏 */}
                <div className="flex items-center justify-between mb-4 relative z-10 overflow-x-auto pb-2 sm:pb-0">
                   <div className="flex items-center gap-2 text-xs font-bold text-[#78716c] uppercase tracking-widest font-mono flex-shrink-0">
                     <Leaf className="w-3 h-3" />
                     <span>Field Matrix</span>
                   </div>
                   
-                  {/* [修改] 扩展状态显示：增加 CARE (黄) 和 DEAD (红) */}
                   <div className="flex gap-2 flex-nowrap">
                      <MiniStat label="IDLE" value={selectedPlayer.lands.filter((l) => l.status === "empty").length} color="text-stone-300" bg="bg-stone-700" />
                      <MiniStat label="GROW" value={selectedPlayer.lands.filter((l) => l.status === "planted").length} color="text-blue-200" bg="bg-blue-900" />
@@ -174,21 +246,35 @@ import {
                      />
                      <MiniStat label="RIPE" value={selectedPlayer.lands.filter((l) => l.status === "harvestable").length} color="text-green-200" bg="bg-green-900" />
                      <MiniStat label="DEAD" value={selectedPlayer.lands.filter((l) => l.status === "withered").length} color="text-red-200" bg="bg-red-900" />
+                     
+                     {/* [新增] Security Status MiniStat */}
+                     <MiniStat 
+                        label="SEC" 
+                        value={secConfig.value} 
+                        color={secConfig.color} 
+                        bg={secConfig.bg} 
+                     />
                   </div>
                </div>
   
-              {/* [修改] 固定渲染 18 个格子 */}
-              <div className="grid grid-cols-3 gap-6 relative z-10 max-w-2xl mx-auto">
-                {Array.from({ length: TOTAL_LAND_SLOTS }).map((_, index) => {
-                  const land = selectedPlayer.lands.find(l => l.position === index);
-                  return (
-                    <LandTile 
-                      key={land ? land.id : `locked-${index}`} 
-                      land={land} // 如果没有该位置的土地，此处为 undefined
-                      locked={!land} // 如果没有该位置的土地，视为锁定
-                    />
-                  );
-                })}
+              {/* 网格容器：这是狗巡逻的相对参照物 */}
+              <div className="relative max-w-2xl mx-auto">
+                  {/* 巡逻狗层 */}
+                  <PatrolDog isActive={isDogActive} isDebug={debugMode} />
+
+                  {/* 土地 Grid */}
+                  <div className="grid grid-cols-3 gap-6 relative z-10">
+                    {Array.from({ length: TOTAL_LAND_SLOTS }).map((_, index) => {
+                      const land = selectedPlayer.lands.find(l => l.position === index);
+                      return (
+                        <LandTile 
+                          key={land ? land.id : `locked-${index}`} 
+                          land={land} 
+                          locked={!land} 
+                        />
+                      );
+                    })}
+                  </div>
               </div>
             </div>
           </div>

@@ -2,15 +2,15 @@
 
 import prisma from '../utils/prisma';
 import { updateLeaderboard } from '../utils/redis';
-import { GAME_CONFIG, CROPS } from '../config/game-keys';
+import { GAME_CONFIG } from '../config/game-keys';
 
-// 提取配置常量 (便于代码中使用)
 const LAND_LIMIT = GAME_CONFIG.LAND.MAX_LIMIT;
 const LAND_LEVELS = GAME_CONFIG.LAND_LEVELS;
 const LAND_UPGRADE_CONFIG = GAME_CONFIG.LAND_UPGRADE;
 const FERTILIZER_CONFIG = GAME_CONFIG.FERTILIZER;
 const BASE_RATES = GAME_CONFIG.BASE_RATES;
 const LAND_EXPAND_BASE_COST = GAME_CONFIG.LAND.EXPAND_BASE_COST;
+const DOG_CONFIG = GAME_CONFIG.DOG; // [新增] 引入狗的配置
 
 export class GameService {
   
@@ -79,7 +79,7 @@ export class GameService {
     return { ...player, lands: updatedLands };
   }
 
-  // 种植 (自己种自己的地)
+  // 种植
   static async plant(playerId: string, position: number, cropType: string) {
     const crop = await prisma.crop.findUnique({ where: { type: cropType } });
     if (!crop) throw new Error('Crop not found');
@@ -93,8 +93,6 @@ export class GameService {
     
     if (!land || land.status !== 'empty') throw new Error('Land not available');
 
-    // 检查土地类型兼容性
-    // [Fix] 使用 'as any' 或具体类型来解决 TS2345 错误
     const landLevelIndex = LAND_LEVELS.indexOf(land.landType as any);
     const reqLevelIndex = LAND_LEVELS.indexOf(crop.requiredLandType as any);
 
@@ -131,9 +129,8 @@ export class GameService {
     return updatedLand;
   }
 
-  // [修改] 照料: 支持区分 操作者(operatorId) 和 地主(ownerId)
+  // 照料
   static async care(operatorId: string, ownerId: string, position: number, type: 'water' | 'weed' | 'pest') {
-    // 查找地时，必须用 ownerId
     const land = await prisma.land.findUnique({
       where: { playerId_position: { playerId: ownerId, position } }
     });
@@ -144,7 +141,7 @@ export class GameService {
     }
 
     let updateData: any = {};
-    const expReward = 10; // 照料固定奖励
+    const expReward = 10; 
 
     if (type === 'water') {
         if (!land.needsWater) throw new Error('No water needed');
@@ -159,19 +156,17 @@ export class GameService {
         throw new Error('Invalid care type');
     }
 
-    // 事务：更新土地 + 给操作者加经验
     const [updatedLand, updatedOperator] = await prisma.$transaction([
       prisma.land.update({
         where: { id: land.id },
         data: updateData
       }),
       prisma.player.update({
-        where: { id: operatorId }, // 奖励给干活的人
+        where: { id: operatorId },
         data: { exp: { increment: expReward } }
       })
     ]);
     
-    // 检查升级 (针对操作者)
     const newLevel = Math.floor(Math.sqrt(updatedOperator.exp / 10)) + 1;
     if (newLevel !== updatedOperator.level) {
       await prisma.player.update({ where: { id: operatorId }, data: { level: newLevel } });
@@ -181,7 +176,7 @@ export class GameService {
     return { success: true, exp: expReward, land: updatedLand };
   }
 
-  // 收获 (自己收自己的)
+  // 收获
   static async harvest(playerId: string, position: number) {
     const land = await prisma.land.findUnique({
       where: { playerId_position: { playerId, position } }
@@ -258,9 +253,8 @@ export class GameService {
     };
   }
 
-  // [修改] 铲除: 支持区分 操作者(operatorId) 和 地主(ownerId)
+  // 铲除
   static async shovel(operatorId: string, ownerId: string, position: number) {
-    // 查找地时，必须用 ownerId
     const land = await prisma.land.findUnique({
         where: { playerId_position: { playerId: ownerId, position } }
     });
@@ -289,12 +283,11 @@ export class GameService {
             }
         }),
         prisma.player.update({
-            where: { id: operatorId }, // 奖励给操作者
+            where: { id: operatorId }, 
             data: { exp: { increment: expReward } }
         })
     ]);
 
-    // 检查升级 (针对操作者)
     const newLevel = Math.floor(Math.sqrt(updatedOperator.exp / 10)) + 1;
     if (newLevel !== updatedOperator.level) {
       await prisma.player.update({ where: { id: operatorId }, data: { level: newLevel } });
@@ -312,13 +305,12 @@ export class GameService {
     });
     
     if (!player) throw new Error('Player not found');
-    
     if (player.lands.length >= LAND_LIMIT) throw new Error('Max land limit reached');
 
     const expandCost = LAND_EXPAND_BASE_COST * player.lands.length; 
     if (player.gold < expandCost) throw new Error(`Insufficient gold. Need ${expandCost}`);
 
-    const newPosition = player.lands.length; // 新位置索引
+    const newPosition = player.lands.length; 
 
     await prisma.$transaction([
       prisma.player.update({
@@ -345,12 +337,10 @@ export class GameService {
     });
     if (!land) throw new Error('Land not found');
 
-    // [Fix] 强制转换为 keyof 类型来解决 TS7053 错误
     const config = LAND_UPGRADE_CONFIG[land.landType as keyof typeof LAND_UPGRADE_CONFIG];
     if (!config || !config.next) throw new Error('Max level reached');
 
     const player = await prisma.player.findUnique({ where: { id: playerId } });
-    
     if (!player) throw new Error('Player not found');
 
     if (player.level < config.levelReq) throw new Error(`Player level ${config.levelReq} required`);
@@ -370,7 +360,7 @@ export class GameService {
     return { success: true, land: updatedLand };
   }
 
-  // 使用化肥
+  // [修改] 使用化肥：改为直接扣金币，移除库存检查
   static async useFertilizer(playerId: string, position: number, type: 'normal' | 'high') {
     const land = await prisma.land.findUnique({
       where: { playerId_position: { playerId, position } }
@@ -382,9 +372,7 @@ export class GameService {
     const player = await prisma.player.findUnique({ where: { id: playerId } });
     if (!player) throw new Error('Player not found');
     
-    // [修改逻辑开始] ---------------------------------------
-    
-    // 1. 获取配置和价格
+    // 1. 获取化肥配置
     const config = FERTILIZER_CONFIG[type];
     if (!config) throw new Error('Invalid fertilizer type');
 
@@ -404,7 +392,7 @@ export class GameService {
       prisma.player.update({
         where: { id: playerId },
         data: { 
-            gold: { decrement: config.price } // 直接扣钱
+            gold: { decrement: config.price } // 直接扣金币
         }
       }),
       prisma.land.update({
@@ -413,8 +401,50 @@ export class GameService {
       })
     ]);
 
-    // [修改逻辑结束] ---------------------------------------
-
     return { success: true, newMatureAt, type, cost: config.price };
+  }
+
+  // [新增] 买狗
+  static async buyDog(playerId: string) {
+    const player = await prisma.player.findUnique({ where: { id: playerId } });
+    if (!player) throw new Error('Player not found');
+    if (player.hasDog) throw new Error('You already have a dog');
+    if (player.gold < DOG_CONFIG.PRICE) throw new Error(`Insufficient gold. Need ${DOG_CONFIG.PRICE}`);
+
+    await prisma.player.update({
+      where: { id: playerId },
+      data: {
+        gold: { decrement: DOG_CONFIG.PRICE },
+        hasDog: true,
+        dogActiveUntil: new Date() // 买来默认需要喂食
+      }
+    });
+
+    return { success: true };
+  }
+
+  // [新增] 喂狗
+  static async feedDog(playerId: string) {
+    const player = await prisma.player.findUnique({ where: { id: playerId } });
+    if (!player) throw new Error('Player not found');
+    if (!player.hasDog) throw new Error('You do not own a dog');
+    if (player.gold < DOG_CONFIG.FOOD_PRICE) throw new Error(`Insufficient gold. Need ${DOG_CONFIG.FOOD_PRICE}`);
+
+    const now = new Date();
+    const currentActive = player.dogActiveUntil && player.dogActiveUntil > now 
+      ? player.dogActiveUntil 
+      : now;
+    
+    const newActiveUntil = new Date(currentActive.getTime() + DOG_CONFIG.FOOD_DURATION * 1000);
+
+    await prisma.player.update({
+      where: { id: playerId },
+      data: {
+        gold: { decrement: DOG_CONFIG.FOOD_PRICE },
+        dogActiveUntil: newActiveUntil
+      }
+    });
+
+    return { success: true, activeUntil: newActiveUntil };
   }
 }
