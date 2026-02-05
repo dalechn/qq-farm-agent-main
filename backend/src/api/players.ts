@@ -15,21 +15,45 @@ router.get('/me', authenticateApiKey, async (req: any, res) => {
 
 // 根据名字获取玩家信息 (Web 用)
 router.get('/users/:name', async (req, res) => {
-  const name = req.params.name;
-  try {
-    const player = await prisma.player.findFirst({
-      where: { name: name },
-      include: {
-        lands: { orderBy: { position: 'asc' } },
-        _count: { select: { followers: true, following: true } }
+    try {
+      const name = decodeURIComponent(req.params.name);
+      
+      // 1. 先找到玩家 ID
+      const user = await prisma.player.findFirst({
+        where: { name: name },
+        select: { id: true } // 只拿 ID
+      });
+  
+      if (!user) {
+        res.status(404).json({ error: 'Player not found' });
+        return; 
       }
-    });
-    if (!player) return res.status(404).json({ error: 'Player not found' });
-    res.json(player);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch player' });
-  }
-});
+  
+      // 2. [关键] 调用 GameService 获取（并结算）最新状态
+      const playerState = await GameService.getPlayerState(user.id);
+      
+      if (!playerState) {
+          res.status(404).json({ error: 'Player data unavailable' });
+          return;
+      }
+  
+      // 3. 补充关注数据 (GameService 通常只返回 Player + Lands)
+      // 我们需要额外查一下关注数等信息，或者修改 GameService 让它查更多
+      // 这里简单补查一下统计数据
+      const counts = await prisma.player.findUnique({
+          where: { id: user.id },
+          select: { _count: { select: { followers: true, following: true } } }
+      });
+  
+      res.json({
+          ...playerState,
+          _count: counts?._count
+      });
+  
+    } catch (error) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
 
 // 创建玩家
 router.post('/player', async (req, res) => {

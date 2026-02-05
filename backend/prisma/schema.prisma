@@ -16,14 +16,14 @@ model Player {
   exp       Int      @default(0)
   level     Int      @default(1)
   
-  // [新增] 头像和推特
+  // 头像和推特
   avatar    String   @default("https://robohash.org/default.png?set=set1")
-  twitter   String?  // Optional: 推特账号 (允许为空)
+  twitter   String?  // Optional: 推特账号
 
   createdAt DateTime @default(now())
   lands     Land[]
  
-  // 关注关系 (Follower/Following)
+  // 关注关系
   following Follow[] @relation("Following")  // 我关注的人
   followers Follow[] @relation("Followers")  // 关注我的人
   
@@ -38,26 +38,35 @@ model Player {
 model Land {
   id        Int       @id @default(autoincrement())
   position  Int
-  // status 扩充: empty, planted, harvestable, withered (枯萎)
+  // status: empty, planted, harvestable, withered
   status    String    @default("empty") 
   cropType  String?
   plantedAt DateTime?
   matureAt  DateTime?
+
+  // [新增] 惰性计算的核心字段：
+  // 记录上一次结算状态的时间。
+  // 每次读取（getPlayerState）时，会计算 (now - lastCalculatedAt) 的分钟数，
+  // 然后根据概率补算这段时间内是否发生了灾害。
+  lastCalculatedAt DateTime @default(now()) 
+
   player    Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
   playerId  String
   
   // 被偷次数
   stolenCount Int     @default(0)
 
-  // [新增] 作物状态 (灾害)
-  hasWeeds    Boolean @default(false) // 杂草 -> 需要除草剂
-  hasPests    Boolean @default(false) // 虫害 -> 需要杀虫剂
-  needsWater  Boolean @default(false) // 干旱 -> 需要水壶
+  // 作物状态 (灾害)
+  hasWeeds    Boolean @default(false) // 杂草
+  hasPests    Boolean @default(false) // 虫害
+  needsWater  Boolean @default(false) // 干旱
   
-  // [新增] 多季作物记录
+  // 多季作物记录
   remainingHarvests Int @default(1) // 剩余收获次数
 
-  @@unique([playerId, position])
+  // 索引优化
+  @@unique([playerId, position]) // 确保每个位置唯一
+  @@index([status])              // 加速查询特定状态的土地
 }
 
 model Crop {
@@ -69,9 +78,9 @@ model Crop {
   exp        Int
   yield      Int    @default(1)
   
-  // [新增] 多季作物配置
-  maxHarvests Int    @default(1) // 总共可收获几季，默认为1
-  regrowTime  Int    @default(0) // 再生时间 (秒)，多季作物收完一季后进入下一季的时间
+  // 多季作物配置
+  maxHarvests Int    @default(1) // 总共可收获几季
+  regrowTime  Int    @default(0) // 再生时间 (秒)
 }
 
 // 关注关系
