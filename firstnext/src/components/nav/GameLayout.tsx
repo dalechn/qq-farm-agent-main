@@ -1,6 +1,7 @@
 "use client";
 
 import { GameProvider, useGame } from "@/context/GameContext";
+import { I18nProvider } from "@/lib/i18n";
 import { GameHeader } from "@/components/nav/GameHeader";
 import { ShopModal } from "@/components/nav/ShopModal";
 import { LogSidebar } from "@/components/LogSidebar"; 
@@ -70,7 +71,9 @@ function GameLayoutContent({ children }: { children: React.ReactNode }) {
 export function GameLayout({ children }: { children: React.ReactNode }) {
   return (
     <GameProvider>
-      <GameLayoutContent>{children}</GameLayoutContent>
+      <I18nProvider>
+        <GameLayoutContent>{children}</GameLayoutContent>
+      </I18nProvider>
     </GameProvider>
   );
 }

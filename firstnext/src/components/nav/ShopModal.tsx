@@ -1,7 +1,7 @@
-import { 
-  X, 
-  ShoppingBasket, 
-  Clock, 
+import {
+  X,
+  ShoppingBasket,
+  Clock,
   TrendingUp,
   Layers,
   RefreshCw,
@@ -10,6 +10,7 @@ import {
   Sprout
 } from "lucide-react";
 import { type Crop } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 // ==========================================
 // 1. 像素风 SVG 图标库 (与 LandTile 风格保持一致)
@@ -160,10 +161,10 @@ const CROP_ICONS: Record<string, React.ComponentType> = {
 
 // 土地类型中文映射
 const LAND_TYPE_NAMES: Record<string, string> = {
-  normal: '普通',
-  red: '红土',
-  black: '黑土',
-  gold: '黄金',
+  normal: 'Normal',
+  red: 'Red Soil',
+  black: 'Black Soil',
+  gold: 'Gold',
 };
 
 // 土地类型颜色映射（用于标签）
@@ -181,6 +182,8 @@ interface ShopModalProps {
 }
 
 export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
+  const { t } = useI18n();
+
   if (!isOpen) return null;
 
   return (
@@ -204,16 +207,20 @@ export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
                <ShoppingBasket className="w-6 h-6 text-white" />
             </div>
             <div className="flex flex-col">
-              <h2 className="font-bold text-lg text-stone-200 uppercase tracking-widest leading-none">种子商店</h2>
-              <span className="text-[10px] text-stone-500 mt-1">SUPPLY DEPOT</span>
+              <h2 className="font-bold text-lg text-stone-200 uppercase tracking-widest leading-none">{t('shop.title')}</h2>
+              <span className="text-[10px] text-stone-500 mt-1">{t('shop.subtitle')}</span>
             </div>
           </div>
-          <button 
-            onClick={onClose} 
-            className="w-8 h-8 flex items-center justify-center bg-[#1c1917] border border-stone-600 text-stone-400 hover:text-white hover:bg-red-900/50 hover:border-red-500 transition-all rounded-sm"
-          >
-            <X className="w-5 h-5" />
-          </button>
+
+          {/* Close Button */}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center bg-[#1c1917] border border-stone-600 text-stone-400 hover:text-white hover:bg-red-900/50 hover:border-red-500 transition-all rounded-sm"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         
         {/* Content - Grid Layout */}
@@ -231,7 +238,7 @@ export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
 
                return (
                <div key={crop.type} className="group relative bg-[#292524] border-2 border-[#44403c] hover:border-orange-500/50 hover:bg-[#322c2b] transition-all duration-200 shadow-sm flex flex-col">
-                  
+
                   {/* Card Header & Icon */}
                   <div className="flex p-3 gap-3">
                      <div className="w-16 h-16 bg-[#1c1917] border-2 border-[#44403c] flex items-center justify-center p-1 group-hover:border-orange-500/30 transition-colors">
@@ -243,11 +250,11 @@ export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
                         <div className="flex justify-between items-start">
                            <h3 className="font-bold text-stone-100 text-base truncate pr-2">{crop.name}</h3>
                            <span className={`text-[10px] px-1.5 py-0.5 border ${landTypeColor} rounded-[2px] font-bold uppercase`}>
-                             {LAND_TYPE_NAMES[crop.requiredLandType || 'normal']}
+                             {t(`land.${crop.requiredLandType || 'normal'}`)}
                            </span>
                         </div>
                         <div className="text-[10px] text-stone-500 font-mono mt-1">ID: {crop.type.toUpperCase()}</div>
-                        
+
                         {/* 简要收益概览 */}
                         <div className="mt-2 flex items-center gap-2">
                            <div className="flex items-center gap-1 text-yellow-500 bg-yellow-500/10 px-1.5 py-0.5 rounded-[2px] border border-yellow-500/20">
@@ -256,35 +263,35 @@ export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
                            </div>
                            <div className="text-[10px] text-stone-500">→</div>
                            <div className={`text-[10px] font-bold ${isProfitable ? 'text-green-400' : 'text-red-400'}`}>
-                             净利 {netProfit}
+                             {t('crop.netProfit')} {netProfit}
                            </div>
                         </div>
                      </div>
                   </div>
-                  
+
                   {/* Detailed Stats Grid */}
                   <div className="grid grid-cols-2 gap-px bg-[#44403c] border-y border-[#44403c] mx-0">
                       {/* 出售单价 */}
                       <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">Sell Price</span>
+                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('crop.sellPrice')}</span>
                          <span className="text-stone-300 font-bold text-xs flex items-center gap-1">
                             <Coins className="w-3 h-3 text-stone-500" />
-                            {crop.sellPrice} <span className="text-[9px] font-normal text-stone-600">/个</span>
+                            {crop.sellPrice} <span className="text-[9px] font-normal text-stone-600">{t('crop.perUnit')}</span>
                          </span>
                       </div>
-                      
+
                       {/* 单季产量 */}
                       <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">Yield</span>
+                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('crop.yield')}</span>
                          <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
                             <Layers className="w-3 h-3 text-blue-500/50" />
-                            x{yieldAmount} <span className="text-[9px] font-normal text-stone-600">/季</span>
+                            x{yieldAmount} <span className="text-[9px] font-normal text-stone-600">{t('crop.perSeason')}</span>
                          </span>
                       </div>
 
                       {/* 成熟时间 */}
                       <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">Growth</span>
+                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('crop.growth')}</span>
                          <span className="text-stone-300 font-bold text-xs flex items-center gap-1">
                             <Clock className="w-3 h-3 text-stone-500" />
                             {crop.matureTime}s
@@ -293,7 +300,7 @@ export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
 
                       {/* 经验值 */}
                       <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">EXP</span>
+                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('crop.exp')}</span>
                          <span className="text-purple-300 font-bold text-xs flex items-center gap-1">
                             <TrendingUp className="w-3 h-3 text-purple-500/50" />
                             +{crop.exp}
@@ -303,18 +310,18 @@ export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
 
                   {/* Multi-Harvest Info (if applicable) */}
                   <div className="p-2 bg-[#292524] flex items-center justify-between text-[10px]">
-                     <div className="flex items-center gap-1.5 text-stone-400" title="Max Harvests">
+                     <div className="flex items-center gap-1.5 text-stone-400" title={t('crop.maxHarvests')}>
                         <RefreshCw className="w-3 h-3" />
-                        <span>{crop.maxHarvests} 季作物</span>
+                        <span>{crop.maxHarvests} {t('crop.seasons')}</span>
                      </div>
-                     
+
                      {crop.regrowTime > 0 ? (
                         <div className="flex items-center gap-1 text-emerald-500">
                            <Sprout className="w-3 h-3" />
-                           <span>再成熟: {crop.regrowTime}s</span>
+                           <span>{t('crop.regrow')}: {crop.regrowTime}s</span>
                         </div>
                      ) : (
-                        <span className="text-stone-600">一次性作物</span>
+                        <span className="text-stone-600">{t('crop.oneTime')}</span>
                      )}
                   </div>
                </div>
@@ -325,10 +332,10 @@ export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
         {/* Footer */}
         <div className="p-3 bg-[#292524] border-t-2 border-[#44403c] flex justify-between items-center text-[10px] text-stone-500">
            <div className="flex gap-4">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full"></span> SYSTEM ONLINE</span>
-              <span>MARKET REFRESH: AUTO</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full"></span> {t('footer.online')}</span>
+              <span>{t('footer.refresh')}: AUTO</span>
            </div>
-           <span className="font-mono opacity-50">PRICES EXCLUDE TAX</span>
+           <span className="font-mono opacity-50">{t('footer.prices')}</span>
         </div>
       </div>
     </div>

@@ -130,8 +130,9 @@ export const QUEUE_FARM_EVENTS = 'farm:v2:queue:farm_events';
 export const KEY_PREFIX_FOLLOWING = 'social:v2:following:'; // 我关注了谁
 export const KEY_PREFIX_FOLLOWERS = 'social:v2:followers:'; // 谁关注了我
 
-// ==================== 每日偷菜防刷 (Redis Key) ====================
 export const KEY_PREFIX_STEAL_DAILY = 'steal:daily:'; // 防刷 key 前缀
+export const KEY_PREFIX_CARE_DAILY = 'care:daily:';
+export const KEY_PREFIX_SHOVEL = 'shovel:daily:';
 
 /**
  * 生成每日偷菜防刷的 Redis Key
@@ -177,10 +178,6 @@ export const resetStealToday = async (
   await redisClient.del(key);
 };
 
-// ==================== 每日照料防刷 (Redis Key) ====================
-export const KEY_PREFIX_CARE_DAILY = 'care:daily:';
-export const KEY_PREFIX_SHOVEL_DAILY = 'shovel:daily:'; // 照料防刷 key 前缀
-
 /**
  * 生成每日照料防刷的 Redis Key
  * 格式: care:daily:{date}:{operatorId}:{ownerId}:{position}:{type}
@@ -223,8 +220,6 @@ export const resetCareToday = async (
   await redisClient.del(key);
 };
 
-// ==================== 每日铲除防刷 (Redis Key) ====================
-export const KEY_PREFIX_SHOVEL = 'shovel:daily:';
 
 /**
  * 生成每日铲除防刷的 Redis Key

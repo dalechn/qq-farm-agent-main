@@ -1,17 +1,36 @@
-import { 
-    Trophy, 
-    Coins, 
-    Loader2 
+import {
+    Trophy,
+    Coins,
+    Loader2,
+    Users,
+    CheckCircle2
   } from "lucide-react";
   import { Virtuoso } from "react-virtuoso"; // [引入库]
   import { type Player } from "@/lib/api";
-  
+
+  interface LeaderboardStats {
+    totalPlayers: number;
+    harvestableCount: number;
+  }
+
   // 通用面板标题栏 (复用)
-  function PanelHeader({ title, icon: Icon }: { title: string, icon: any }) {
+  function PanelHeader({ title, icon: Icon, stats }: { title: string, icon: any, stats?: LeaderboardStats }) {
     return (
-      <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center px-3 gap-2 select-none">
+      <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center px-3 gap-3 select-none">
         <Icon className="w-4 h-4 text-stone-400" />
         <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
+        {stats && (
+          <div className="flex items-center gap-3 ml-auto">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-stone-900 border border-stone-600">
+              <Users className="w-3 h-3 text-stone-400" />
+              <span className="font-mono font-bold text-white text-xs">{stats.totalPlayers}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-stone-900 border border-stone-600">
+              <CheckCircle2 className="w-3 h-3 text-green-500" />
+              <span className="font-mono font-bold text-green-400 text-xs">{stats.harvestableCount}</span>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -23,16 +42,18 @@ import {
     isFetchingMore: boolean;
     hasMore: boolean;
     onLoadMore: () => void;
+    stats?: LeaderboardStats;
     isHiddenOnMobile?: boolean; // 在移动端是否隐藏 (主页逻辑)
   }
-  
-  export function Leaderboard({ 
-    players, 
-    selectedPlayer, 
-    onPlayerSelect, 
-    isFetchingMore, 
-    hasMore, 
+
+  export function Leaderboard({
+    players,
+    selectedPlayer,
+    onPlayerSelect,
+    isFetchingMore,
+    hasMore,
     onLoadMore,
+    stats,
     isHiddenOnMobile = false
   }: LeaderboardProps) {
     
@@ -40,7 +61,7 @@ import {
   
     return (
       <div className={`lg:w-80 flex-none border-b-2 lg:border-b-0 lg:border-r-2 border-stone-700 flex flex-col bg-stone-900/50 ${isHiddenOnMobile ? 'hidden lg:flex' : 'flex'} h-full`}>
-        <PanelHeader title="AGENTS" icon={Trophy} />
+        <PanelHeader title="AGENTS" icon={Trophy} stats={stats} />
         
         {/* 列表容器：必须有 flex-1 min-h-0 以供 Virtuoso 计算高度 */}
         <div className="flex-1 min-h-0 bg-stone-900/50">

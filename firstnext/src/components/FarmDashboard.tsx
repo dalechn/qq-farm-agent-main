@@ -28,20 +28,22 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
   // PC 端列表 Ref
   const desktopListRef = useRef<VirtuosoHandle>(null);
 
-  const { 
-    players, 
-    logs: globalLogs, 
-    isLoading, 
+  const {
+    players,
+    logs: globalLogs,
+    isLoading,
     isFetchingMorePlayers,
     hasMorePlayers,
     loadMorePlayers,
     hasMoreLogs,
     loadMoreLogs,
-    refreshLogs, 
+    refreshLogs,
     isFetchingMoreLogs,
     error,
     isActivityOpen,
-    setIsActivityOpen
+    setIsActivityOpen,
+    stats,
+    updatePlayer // [新增] 引入 updatePlayer
   } = useGame();
   
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
@@ -58,13 +60,14 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
       publicApi.getPlayerByName(initialUsername)
         .then((player) => {
           setSelectedPlayer(player);
+          updatePlayer(player); // [新增] 同步数据到列表
         })
         .catch(() => {
           console.error(`User ${initialUsername} not found`);
         })
         .finally(() => setIsPlayerLoading(false));
     }
-  }, [initialUsername]);
+  }, [initialUsername, updatePlayer]);
 
   // 默认选中第一个
   useEffect(() => {
@@ -121,6 +124,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
       try {
         const freshData = await publicApi.getPlayerByName(name);
         setSelectedPlayer(freshData);
+        updatePlayer(freshData); // [新增] 同步数据到列表
       } catch (e) {
         console.error("Failed to refresh player data", e);
       } finally {
@@ -166,13 +170,14 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
       )}
 
       {/* 1. 排行榜 */}
-      <Leaderboard 
+      <Leaderboard
         players={players}
         selectedPlayer={selectedPlayer}
         onPlayerSelect={handlePlayerClick}
         isFetchingMore={isFetchingMorePlayers}
         hasMore={hasMorePlayers}
         onLoadMore={loadMorePlayers}
+        stats={stats}
         isHiddenOnMobile={!!initialUsername}
       />
 

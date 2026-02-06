@@ -201,53 +201,53 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
 
   // 2. 交互处理
   const handleClick = async () => {
-    if (loading) return;
+    // if (loading) return;
 
-    try {
-      setLoading(true);
-      if (land.status === 'empty' && selectedCrop) {
-        await plant(land.position, selectedCrop);
-        onUpdate?.();
-      } else if (land.status === 'harvestable' || isMature) {
-        await harvest(land.position);
-        onUpdate?.();
-      } else if (land.status === 'withered') {
-        await shovelLand(land.position);
-        onUpdate?.();
-      }
-    } catch (error) {
-      console.error('Action failed:', error);
-    } finally {
-      setLoading(false);
-    }
+    // try {
+    //   setLoading(true);
+    //   if (land.status === 'empty' && selectedCrop) {
+    //     await plant(land.position, selectedCrop);
+    //     onUpdate?.();
+    //   } else if (land.status === 'harvestable' || isMature) {
+    //     await harvest(land.position);
+    //     onUpdate?.();
+    //   } else if (land.status === 'withered') {
+    //     await shovelLand(land.position);
+    //     onUpdate?.();
+    //   }
+    // } catch (error) {
+    //   console.error('Action failed:', error);
+    // } finally {
+    //   setLoading(false);
+    // }
   };
 
   const handleCare = async (e: React.MouseEvent, type: 'water' | 'weed' | 'pest') => {
-    e.stopPropagation(); 
-    if (loading) return;
-    try {
-      setLoading(true);
-      await careLand(land.position, type);
-      onUpdate?.();
-    } catch (error) {
-      console.error('Care failed:', error);
-    } finally {
-      setLoading(false);
-    }
+    // e.stopPropagation(); 
+    // if (loading) return;
+    // try {
+    //   setLoading(true);
+    //   await careLand(land.position, type);
+    //   onUpdate?.();
+    // } catch (error) {
+    //   console.error('Care failed:', error);
+    // } finally {
+    //   setLoading(false);
+    // }
   };
 
   const handleShovel = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (loading) return;
-    try {
-      setLoading(true);
-      await shovelLand(land.position);
-      onUpdate?.();
-    } catch (error) {
-      console.error('Shovel failed:', error);
-    } finally {
-      setLoading(false);
-    }
+    // e.stopPropagation();
+    // if (loading) return;
+    // try {
+    //   setLoading(true);
+    //   await shovelLand(land.position);
+    //   onUpdate?.();
+    // } catch (error) {
+    //   console.error('Shovel failed:', error);
+    // } finally {
+    //   setLoading(false);
+    // }
   };
 
   // [新增] 施肥操作
@@ -261,7 +261,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
       onUpdate?.();
     } catch (error) {
       console.error('Fertilizer failed:', error);
-      alert('施肥失败：可能没有库存');
+      alert('Fertilizer failed: No inventory');
     } finally {
       setLoading(false);
     }
@@ -364,7 +364,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
         select-none
         ${getLandStyle()}
       `}
-      // onClick={handleClick}
+      onClick={handleClick}
     >
       {/* 像素化内阴影 */}
       <div className="absolute inset-0 border-t-2 border-l-2 border-white/5 pointer-events-none"></div>
@@ -407,6 +407,13 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
                </div>
             )}
 
+            {/* WITHERED 文字（显示在遮罩层之上） */}
+            {land.status === 'withered' && (
+              <div className="absolute bottom-1 z-30 text-[8px] text-red-400 font-mono bg-black/60 px-2 py-0.5">
+                 WITHERED
+              </div>
+            )}
+
             {/* 作物图标容器 */}
             <div className={`w-12 h-12 sm:w-14 sm:h-14 transition-transform duration-500 relative ${isMature ? 'animate-bounce-slow' : 'scale-90 group-hover:scale-100'}`}>
               {renderCropIcon()}
@@ -445,10 +452,10 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
                       style={{ width: `${progress}%` }} 
                    />
                  </div>
-                 {/* 剩余几季显示 */}
+                 {/* Remaining harvests display */}
                  {land.remainingHarvests > 1 && (
                     <div className="text-[8px] text-yellow-200 font-mono scale-75 origin-bottom">
-                       剩余 {land.remainingHarvests} 季
+                       {land.remainingHarvests} harvests left
                     </div>
                  )}
                 </>
@@ -457,12 +464,6 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
               {isMature && (
                 <div className="bg-yellow-500/90 text-black text-[8px] px-2 py-0.5 font-bold font-mono border border-black shadow-sm tracking-wide">
                   HARVEST
-                </div>
-              )}
-              
-              {land.status === 'withered' && (
-                <div className="text-[8px] text-red-400 font-mono bg-black/50 px-1 rounded">
-                   WITHERED
                 </div>
               )}
             </div>

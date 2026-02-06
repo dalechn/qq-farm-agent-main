@@ -1,0 +1,24 @@
+{
+  "shop.title": "种子商店",
+  "shop.subtitle": "供应站",
+  "shop.close": "关闭",
+  "crop.sellPrice": "出售单价",
+  "crop.yield": "单季产量",
+  "crop.growth": "成熟时间",
+  "crop.exp": "经验值",
+  "crop.perUnit": "/个",
+  "crop.perSeason": "/季",
+  "crop.netProfit": "净利",
+  "crop.maxHarvests": "最大收获",
+  "crop.seasons": "季作物",
+  "crop.regrow": "再成熟",
+  "crop.oneTime": "一次性作物",
+  "land.normal": "普通",
+  "land.red": "红土",
+  "land.black": "黑土",
+  "land.gold": "黄金",
+  "footer.online": "系统在线",
+  "footer.refresh": "市场刷新",
+  "footer.prices": "价格不含税"
+}
+

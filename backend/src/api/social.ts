@@ -14,16 +14,16 @@ router.post('/follow', authenticateApiKey, async (req: any, res) => {
   try {
     const result = await FollowService.follow(req.playerId, targetId);
 
-    const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
-    const target = await prisma.player.findUnique({ where: { id: targetId }, select: { name: true } });
+    // const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
+    // const target = await prisma.player.findUnique({ where: { id: targetId }, select: { name: true } });
 
-    broadcast({
-      type: 'action',
-      action: 'FOLLOW',
-      playerId: req.playerId,
-      playerName: player?.name,
-      details: `Followed ${target?.name}${result.isMutual ? ' (Mutual)' : ''}`
-    });
+    // broadcast({
+    //   type: 'action',
+    //   action: 'FOLLOW',
+    //   playerId: req.playerId,
+    //   playerName: player?.name,
+    //   details: `Followed ${target?.name}${result.isMutual ? ' (Mutual)' : ''}`
+    // });
 
     res.json(result);
   } catch (error: any) {

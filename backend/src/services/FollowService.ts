@@ -3,19 +3,11 @@
 import prisma from '../utils/prisma';
 import {
   redisClient,
-  acquireLock,
-  releaseLock,
-  updateLeaderboard,
   QUEUE_SOCIAL_EVENTS,
-  invalidatePlayerCache,
-  getLandLockKey,
   KEY_PREFIX_FOLLOWING,
   KEY_PREFIX_FOLLOWERS,
-  checkAndMarkStealToday
 } from '../utils/redis';
-import { GAME_CONFIG, CROPS } from '../utils/game-keys';
 
-const DOG_CONFIG = GAME_CONFIG.DOG;
 
 export class FollowService {
 

@@ -27,6 +27,17 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const [hasMoreLogs, setHasMoreLogs] = useState(true);
   const [isFetchingMoreLogs, setIsFetchingMoreLogs] = useState(false);
 
+  // [新增] 更新单个玩家数据到列表中
+  // 用于当 fetch 详情页获得最新数据时，同步更新排行榜列表的状态（如绿点）
+  const updatePlayer = useCallback((updatedPlayer: Player) => {
+    setPlayers(prev => prev.map(p => {
+      if (p.id === updatedPlayer.id) {
+        return updatedPlayer;
+      }
+      return p;
+    }));
+  }, []);
+
   // 获取玩家列表
   const fetchPlayers = useCallback(async (pageNum: number, isLoadMore = false) => {
     try {
@@ -101,7 +112,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
     fetchLogs(nextPage, true, playerId);
   }, [logPage, hasMoreLogs, isFetchingMoreLogs, fetchLogs]);
 
-  // [新增] 手动刷新日志方法
+  // 手动刷新日志方法
   const refreshLogs = useCallback(() => {
     setLogPage(1); // 重置页码
     fetchLogs(1);  // 重新获取第一页
@@ -158,8 +169,8 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const stats = {
     totalPlayers: totalPlayersCount, 
     loadedCount: players.length,
-    totalGold: players.reduce((sum, p) => sum + p.gold, 0),
-    totalExp: players.reduce((sum, p) => sum + p.exp, 0),
+    // totalGold: players.reduce((sum, p) => sum + p.gold, 0),
+    // totalExp: players.reduce((sum, p) => sum + p.exp, 0),
     harvestableCount: players.reduce(
       (sum, p) => sum + p.lands.filter((l) => l.status === 'harvestable').length,
       0
@@ -180,8 +191,10 @@ export function useGameData(options: UseGameDataOptions = {}) {
     isFetchingMoreLogs,
     hasMoreLogs,
     loadMoreLogs,
-    refreshLogs, // [新增] 导出刷新方法
+    refreshLogs, 
     
+    updatePlayer, // [新增] 导出该方法
+
     error,
     isConnected,
     refresh: () => { 

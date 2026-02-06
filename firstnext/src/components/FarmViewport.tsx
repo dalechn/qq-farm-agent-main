@@ -16,6 +16,16 @@ import {
   import { PatrolDog } from "@/components/PatrolDog";
   import { DebugSidebar } from "@/components/DebugSidebar";
   import { UserListSidebar } from "@/components/UserListSidebar";
+
+  // 辅助函数：格式化注册日期
+  function formatJoinDate(dateStr: string) {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  }
   
   // 辅助组件：面板标题
   function PanelHeader({ 
@@ -223,27 +233,9 @@ import {
                       )}
   
                       <div className="flex items-center gap-3 text-[10px] text-stone-400 bg-stone-900/50 px-2 py-0.5 border border-stone-800 font-mono whitespace-nowrap">
-                         <button
-                            onClick={() => {
-                                setUserListSidebarType('following');
-                                setUserListPlayerId(selectedPlayer.id);
-                                setIsUserListSidebarOpen(true);
-                            }}
-                            className="hover:text-orange-400 transition-colors"
-                         >
-                            <span className="text-white font-bold">{selectedPlayer._count?.following || 0}</span> <span className="text-[8px] uppercase">Following</span>
-                         </button>
-                         <span className="w-px h-2 bg-stone-700"></span>
-                         <button
-                            onClick={() => {
-                                setUserListSidebarType('followers');
-                                setUserListPlayerId(selectedPlayer.id);
-                                setIsUserListSidebarOpen(true);
-                            }}
-                            className="hover:text-orange-400 transition-colors"
-                         >
-                            <span className="text-white font-bold">{selectedPlayer._count?.followers || 0}</span> <span className="text-[8px] uppercase">Followers</span>
-                         </button>
+                         <span className="text-stone-500">
+                           <span className="text-white">Joined</span> {formatJoinDate(selectedPlayer.createdAt)}
+                         </span>
                       </div>
                     </div>
                   </div>

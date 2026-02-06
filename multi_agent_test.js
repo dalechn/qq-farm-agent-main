@@ -1,18 +1,18 @@
 /**
- * Multi Agent Test - Node.js Version (v5 - Balanced Life)
+ * Multi Agent Test - Node.js Version
  * * Usage: node multi_agent_test.js
- * * 核心逻辑更新：
+ * * 核心逻辑：
  * 1. 必须优先完成自家农场的维护 (Harvest/Plant/Self-Care)。
  * 2. 社交互动 (Social Interaction) 采用概率分支：
- * - 40% 概率：变身“偷菜恶霸”，疯狂寻找成熟作物。
- * - 60% 概率：变身“热心邻居”，帮好友除草/浇水/铲除枯萎。
+ * - 40% 概率：偷菜模式，从全部 agent 中随机选择目标。
+ * - 60% 概率：助人模式，从全部 agent 中随机选择目标。
  */
 
 // ================= 配置区域 =================
 const API_BASE = "http://localhost:3001/api";
 const AUTH_BASE = "http://localhost:3002/api/auth";
 
-const PLAYERS_COUNT = 100; // 机器人数量
+const PLAYERS_COUNT = 1000; // 机器人数量
 const LOOP_COUNT = 50;    // 每个机器人行动的回合数
 
 // 模拟的作物配置 (需与后端一致)
@@ -88,11 +88,6 @@ class FarmAgent {
     return false;
   }
 
-  async follow(targetId) {
-    if (targetId === this.playerId) return;
-    await this.request('/follow', 'POST', { targetId });
-  }
-
   async refreshState() {
     const data = await this.request('/me');
     if (data) {
@@ -104,7 +99,7 @@ class FarmAgent {
   }
 
   // ================= 核心行动逻辑 =================
-  async playTurn(friends) {
+  async playTurn(allAgents) {
     if (!this.apiKey) return;
 
     // 1. 必须先刷新状态
@@ -112,7 +107,7 @@ class FarmAgent {
 
     // 2. === 必须先做：自家农场维护 (Self Maintenance) ===
     // 逻辑：如果不先收菜，被别人偷了就亏了；如果不先种菜，别人没得偷。
-    
+
     // [收获]
     for (const land of this.lands) {
       if (land.status === "harvestable") {
@@ -136,7 +131,7 @@ class FarmAgent {
       const availableCrops = CROPS_CONFIG.filter(c => c.levelReq <= this.level && c.seedPrice <= this.gold);
       if (availableCrops.length > 0) {
         const targetLand = randomChoice(emptyLands);
-        const cropToPlant = randomChoice(availableCrops); 
+        const cropToPlant = randomChoice(availableCrops);
         const res = await this.request('/plant', 'POST', { position: targetLand.position, cropType: cropToPlant.type });
         if (res && res.success) {
           this.gold -= cropToPlant.seedPrice;
@@ -144,7 +139,7 @@ class FarmAgent {
       }
     }
 
-    // [自家照料] (优先级略低，放后面也没事)
+    // [自家照料]
     for (const land of this.lands) {
       if (land.status === 'planted' && (land.needsWater || land.hasWeeds || land.hasPests)) {
         let action = land.needsWater ? 'water' : (land.hasWeeds ? 'weed' : 'pest');
@@ -153,26 +148,27 @@ class FarmAgent {
     }
 
     // 3. === 社交互动 (Social) ===
-    // 60% 做好事，40% 偷菜
-    if (friends && friends.length > 0) {
+    // 60% 做好事，40% 偷菜，从全部 agent 中随机选择目标
+    const otherAgents = allAgents.filter(b => b.playerId !== this.playerId);
+    if (otherAgents && otherAgents.length > 0) {
       const roll = Math.random(); // 0.0 ~ 1.0
 
       if (roll < 0.6) {
-        // >>> 40% 概率：偷菜模式 (Steal Mode) <<<
-        await this.doStealRoutine(friends);
-      } else {
         // >>> 60% 概率：好人模式 (Helper Mode) <<<
-        await this.doHelpRoutine(friends);
+        await this.doHelpRoutine(otherAgents);
+      } else {
+        // >>> 40% 概率：偷菜模式 (Steal Mode) <<<
+        await this.doStealRoutine(otherAgents);
       }
     }
   }
 
   // --- 偷菜子程序 ---
-  async doStealRoutine(friends) {
-    // 随机找 3-5 个“倒霉蛋”
-    const count = Math.min(friends.length, 5);
-    const victims = friends.sort(() => 0.5 - Math.random()).slice(0, count);
-    
+  async doStealRoutine(targets) {
+    // 随机找 3-5 个"倒霉蛋"
+    const count = Math.min(targets.length, 5);
+    const victims = targets.sort(() => 0.5 - Math.random()).slice(0, count);
+
     for (const victim of victims) {
       // 每个人盲猜 3 个位置
       const tryPositions = new Set();
@@ -192,28 +188,28 @@ class FarmAgent {
   }
 
   // --- 助人子程序 ---
-  async doHelpRoutine(friends) {
-    // 随机找 2-3 个好友送温暖
-    const count = Math.min(friends.length, 3);
-    const luckyFriends = friends.sort(() => 0.5 - Math.random()).slice(0, count);
+  async doHelpRoutine(targets) {
+    // 随机找 2-3 个目标送温暖
+    const count = Math.min(targets.length, 3);
+    const luckyTargets = targets.sort(() => 0.5 - Math.random()).slice(0, count);
 
-    for (const friend of luckyFriends) {
+    for (const target of luckyTargets) {
       // 盲猜位置尝试帮忙
       const tryPositions = [randomInt(0, 5), randomInt(6, 11)];
-      
+
       for (const pos of tryPositions) {
         // 1. 优先尝试铲除枯萎 (经验高)
-        const resShovel = await this.request('/shovel', 'POST', { targetId: friend.playerId, position: pos });
+        const resShovel = await this.request('/shovel', 'POST', { targetId: target.playerId, position: pos });
         if (resShovel && resShovel.success) {
-          this.log(`😇 帮好友 [${friend.name}] 铲除了枯萎作物`);
+          this.log(`😇 帮 [${target.name}] 铲除了枯萎作物`);
           continue; // 铲完了就不用照料了
         }
 
         // 2. 尝试随机照料 (浇水/除草/除虫)
         const action = randomChoice(['water', 'weed', 'pest']);
-        const resCare = await this.request('/care', 'POST', { targetId: friend.playerId, position: pos, type: action });
+        const resCare = await this.request('/care', 'POST', { targetId: target.playerId, position: pos, type: action });
         if (resCare && resCare.success) {
-          this.log(`💧 帮好友 [${friend.name}] ${action} 成功`);
+          this.log(`💧 帮 [${target.name}] ${action} 成功`);
         }
         await sleep(20);
       }
@@ -223,14 +219,12 @@ class FarmAgent {
 
 // ================= 主流程 =================
 
-async function botWorker(agent, allBots) {
-  const myFriends = allBots.filter(b => b.playerId !== agent.playerId);
-  
+async function botWorker(agent, allAgents) {
   // 错开启动
   await sleep(randomInt(0, 2000));
 
   for (let i = 0; i < LOOP_COUNT; i++) {
-    await agent.playTurn(myFriends);
+    await agent.playTurn(allAgents);
     // 随机间隔 2~4 秒
     await sleep(randomInt(2000, 4000));
   }
@@ -246,17 +240,8 @@ async function main() {
     await sleep(10);
   }
 
-  console.log(`=== 2. 建立关系: 全员互粉 ===`);
-  for (let i = 0; i < bots.length; i++) {
-    for (let j = 0; j < bots.length; j++) {
-      if (i !== j) bots[i].follow(bots[j].playerId).catch(()=>{});
-    }
-    if (i % 20 === 0) process.stdout.write(".");
-  }
-  console.log("\n关系建立完成！");
+  console.log(`\n=== 2. 开始大乱斗 (60% 好人 / 40% 恶霸) ===`);
 
-  console.log(`=== 3. 开始大乱斗 (60% 好人 / 40% 恶霸) ===`);
-  
   const promises = bots.map(bot => botWorker(bot, bots));
   await Promise.all(promises);
 

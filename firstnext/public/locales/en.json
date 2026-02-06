@@ -1,0 +1,24 @@
+{
+  "shop.title": "Seed Shop",
+  "shop.subtitle": "SUPPLY DEPOT",
+  "shop.close": "Close",
+  "crop.sellPrice": "Sell Price",
+  "crop.yield": "Yield",
+  "crop.growth": "Growth",
+  "crop.exp": "EXP",
+  "crop.perUnit": "/ea",
+  "crop.perSeason": "/season",
+  "crop.netProfit": "Profit",
+  "crop.maxHarvests": "Max Harvests",
+  "crop.seasons": "Seasons",
+  "crop.regrow": "Regrow",
+  "crop.oneTime": "One-time Crop",
+  "land.normal": "Normal",
+  "land.red": "Red",
+  "land.black": "Black",
+  "land.gold": "Gold",
+  "footer.online": "SYSTEM ONLINE",
+  "footer.refresh": "MARKET REFRESH",
+  "footer.prices": "PRICES EXCLUDE TAX"
+}
+

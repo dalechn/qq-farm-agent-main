@@ -75,7 +75,7 @@ export function setupWebSocket(server: Server) {
   return wss;
 }
 
-export async function broadcast(message: any) {
+export async function broadcast(message: any, includeGlobal = true) {
   const logEntry = {
     id: uuidv4(),
     timestamp: new Date().toISOString(),
@@ -87,13 +87,14 @@ export async function broadcast(message: any) {
   try {
     const pipeline = redisClient.multi();
 
-    // [修改] 使用新的 Key 常量
-    // 1. 全局日志
-    pipeline.zAdd(KEY_GLOBAL_LOGS, { score, value: data });
-    pipeline.zRemRangeByScore(KEY_GLOBAL_LOGS, '-inf', score - LOG_RETENTION_MS);
-    pipeline.expire(KEY_GLOBAL_LOGS, LOG_RETENTION_SECONDS);
+    // 1. 全局日志（可选）
+    if (includeGlobal) {
+      pipeline.zAdd(KEY_GLOBAL_LOGS, { score, value: data });
+      pipeline.zRemRangeByScore(KEY_GLOBAL_LOGS, '-inf', score - LOG_RETENTION_MS);
+      pipeline.expire(KEY_GLOBAL_LOGS, LOG_RETENTION_SECONDS);
+    }
 
-    // 2. 玩家日志
+    // 2. 玩家日志（始终写入）
     if (message.playerId) {
       const playerKey = `${KEY_PLAYER_LOGS_PREFIX}${message.playerId}`;
       pipeline.zAdd(playerKey, { score, value: data });
@@ -109,9 +110,9 @@ export async function broadcast(message: any) {
   redisClient.publish(CHANNEL_NAME, data);
 }
 
-export function sendToPlayer(playerId: string, message: object) {
-  // Ignored
-}
+// export function sendToPlayer(playerId: string, message: object) {
+//   // Ignored
+// }
 
 async function startMatureChecker() {
   setInterval(async () => {
