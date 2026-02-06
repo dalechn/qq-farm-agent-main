@@ -10,7 +10,6 @@ import { setupWebSocket } from './utils/websocket';
 import playerRoutes from './api/players';
 import gameRoutes from './api/game';
 import socialRoutes from './api/social';
-import systemRoutes from './api/system';
 import { CROPS } from './config/game-keys';
 
 dotenv.config();
@@ -23,7 +22,6 @@ app.use(express.json());
 app.use('/api', playerRoutes);
 app.use('/api', gameRoutes);
 app.use('/api', socialRoutes);
-app.use('/api', systemRoutes);
 
 // ==================== 服务器启动 ====================
 

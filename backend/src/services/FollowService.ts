@@ -63,16 +63,17 @@ export class FollowService {
 
   // 检查是否互相关注
   static async checkMutualFollow(userA: string, userB: string): Promise<boolean> {
-    const [aFollowsB, bFollowsA] = await Promise.all([
-      prisma.follow.findUnique({
-        where: { followerId_followingId: { followerId: userA, followingId: userB } }
-      }),
-      prisma.follow.findUnique({
-        where: { followerId_followingId: { followerId: userB, followingId: userA } }
-      })
-    ]);
-
-    return !!(aFollowsB && bFollowsA);
+    // 查找 A->B 和 B->A 的记录总数
+    const count = await prisma.follow.count({
+      where: {
+        OR: [
+          { followerId: userA, followingId: userB },
+          { followerId: userB, followingId: userA }
+        ]
+      }
+    });
+    // 只有两条记录都存在，才算互粉
+    return count === 2;
   }
 
   // [核心修改] 获取关注列表 (带 isMutual 状态)
@@ -260,47 +261,61 @@ export class FollowService {
       throw new Error('Cannot steal from yourself');
     }
 
-    // 1. 定义锁的 Key
-    const lockKey = `lock:steal:${victimId}:${position}`;
+    // [Step 0] 预检查 & 获取 LandID 以便加锁
+    // 为了保证锁 Key 与 harvest/plant 一致，我们需要 land.id
+    const targetLand = await prisma.land.findUnique({
+      where: { playerId_position: { playerId: victimId, position } }
+    });
+    
+    if (!targetLand) throw new Error('Land not found');
 
-    // 2. 尝试获取锁 (3秒过期)
+    // [Step 1] 统一锁 Key (与 harvest 保持一致)
+    const lockKey = `lock:land:${targetLand.id}`;
+
+    // 尝试获取锁
     const hasLock = await acquireLock(lockKey, 3);
     if (!hasLock) {
-      throw new Error('Too busy! Someone is already interacting with this land.');
+      throw new Error('Too busy! Someone is interacting with this land.');
     }
 
     try {
-      // 验证是否是好友（互相关注）
-      const isMutual = await this.checkMutualFollow(stealerId, victimId);
-      if (!isMutual) {
-        throw new Error('Not mutual followers (not friends)');
+      // 再次检查 (双重检查锁模式)，防止在等待锁时状态变了
+      const land = await prisma.land.findUnique({
+        where: { id: targetLand.id }
+      });
+      if (!land || land.status !== 'harvestable') {
+        throw new Error('Too late! Nothing to steal.');
       }
 
+      // 验证好友关系 (假设有此方法)
+      const isMutual = await this.checkMutualFollow(stealerId, victimId);
+      if (!isMutual) throw new Error('Not mutual followers');
+
       // [看守狗判定]
+      // 优化：尝试先从 Redis 缓存读 Victim 状态，减少 DB 压力
+      // 这里为了安全演示，还是查 DB，但只查必要字段
       const victim = await prisma.player.findUnique({
         where: { id: victimId },
         select: { name: true, hasDog: true, dogActiveUntil: true, gold: true }
       });
 
       const now = new Date();
-      // 只有买过狗且狗粮没过期的才有效
       const isDogActive = victim?.hasDog && victim.dogActiveUntil && victim.dogActiveUntil > now;
 
-      // 如果狗是醒着的，进行概率判定
+      // --- 🐕 触发咬人逻辑 ---
       if (isDogActive && Math.random() < DOG_CONFIG.BITE_RATE) {
-        // --- 触发咬人逻辑 ---
         const stealer = await prisma.player.findUnique({ where: { id: stealerId } });
-
-        // 扣除偷菜者金币 (如果钱不够，就扣光)
         const penalty = Math.min(stealer?.gold || 0, DOG_CONFIG.PENALTY_GOLD);
 
         if (penalty > 0) {
+          // 原子化金币转移
           await prisma.$transaction([
             prisma.player.update({ where: { id: stealerId }, data: { gold: { decrement: penalty } } }),
             prisma.player.update({ where: { id: victimId }, data: { gold: { increment: penalty } } })
           ]);
         }
 
+        // 推送事件
         const eventData = {
             type: 'DOG_BITTEN',
             stealerId,
@@ -313,30 +328,25 @@ export class FollowService {
         };
         await redisClient.lPush(QUEUE_STEAL_EVENTS, JSON.stringify(eventData));
 
+        // [关键] 清除双方缓存，让前端能刷新最新金币
+        await this.invalidateCache(stealerId);
+        await this.invalidateCache(victimId);
+
         return {
           success: false,
           code: 'DOG_BITTEN',
-          message: `哎呀！被 ${victim?.name} 的恶犬咬了一口，掉落了 ${penalty} 金币！`,
+          message: `被 ${victim?.name} 的狗咬了！损失 ${penalty} 金币`,
           penalty
         };
       }
       
-      // [正常偷菜逻辑]
-      // 获取土地信息
-      const land = await prisma.land.findUnique({
-        where: { playerId_position: { playerId: victimId, position } }
-      });
-
-      if (!land || land.status !== 'harvestable') {
-        throw new Error('Nothing to steal');
-      }
-
-      // 检查是否已经偷过太多次
+      // --- 🥬 正常偷菜逻辑 ---
+      
       if (land.stolenCount >= 3) {
         throw new Error('This crop has been stolen too many times');
       }
 
-      // 检查今天是否已经偷过这块地
+      // 检查今日偷取记录 (建议高并发下改为 Redis SET NX 检查，这里暂时保留 DB)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
       const existingSteal = await prisma.stealRecord.findFirst({
@@ -347,39 +357,34 @@ export class FollowService {
           createdAt: { gte: today }
         }
       });
+      if (existingSteal) throw new Error('Already stolen today');
 
-      if (existingSteal) {
-        throw new Error('Already stolen from this land today');
-      }
+      // 优化：直接从内存配置读取 Crop，不查 DB
+      const crop = CROPS.find(c => c.type === land.cropType); 
+      // 或者使用 import { CROPS } from '../config/game-keys';
+      if (!crop) throw new Error('Crop config not found');
 
-      // 获取作物信息
-      const crop = await prisma.crop.findUnique({ where: { type: land.cropType! } });
-      if (!crop) throw new Error('Crop not found');
-
-      // 计算偷取数量（偷取 1 个）
       const stealAmount = 1;
       const goldValue = crop.sellPrice * stealAmount;
 
-      // 更新偷取次数
-      await prisma.land.update({
-        where: { id: land.id },
-        data: { stolenCount: { increment: 1 } }
-      });
+      // 事务更新：土地被偷次数 + 小偷金币
+      const [updatedLand, updatedStealer] = await prisma.$transaction([
+        prisma.land.update({
+          where: { id: land.id },
+          data: { stolenCount: { increment: 1 } }
+        }),
+        prisma.player.update({
+          where: { id: stealerId },
+          data: { gold: { increment: goldValue } }
+        })
+      ]);
 
-      // 给偷菜者增加金币
-      const updatedStealer = await prisma.player.update({
-        where: { id: stealerId },
-        data: { gold: { increment: goldValue } }
-      });
-
-      // 创建偷菜记录
-      const stealerRecord = await prisma.player.findUnique({ where: { id: stealerId }, select: { name: true } });
-      
-      // [修改] 异步任务：推送到队列，而不是直接写 Notification/StealRecord
+      // 异步记录
+      const stealerName = (await prisma.player.findUnique({where: {id: stealerId}, select: {name:true}}))?.name;
       const eventData = {
           type: 'STEAL_SUCCESS',
           stealerId,
-          stealerName: stealerRecord?.name,
+          stealerName,
           victimId,
           victimName: victim?.name,
           position,
@@ -391,8 +396,11 @@ export class FollowService {
       };
       await redisClient.lPush(QUEUE_STEAL_EVENTS, JSON.stringify(eventData));
 
-      // 更新 Redis 金币排行榜
-      updateLeaderboard('gold', stealerId, updatedStealer.gold).catch((err: any) => console.error(err));
+      updateLeaderboard('gold', stealerId, updatedStealer.gold).catch(console.error);
+
+      // [关键] 清除缓存
+      await this.invalidateCache(stealerId); // 小偷金币变了
+      await this.invalidateCache(victimId);  // 被害人土地状态变了
 
       return {
         success: true,
@@ -403,8 +411,9 @@ export class FollowService {
           goldValue
         }
       };
+
     } finally {
-      // 3. 释放锁
+      // 释放锁
       await releaseLock(lockKey);
     }
   }

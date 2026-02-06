@@ -7,7 +7,8 @@
  */
 
 // ================= 配置区域 =================
-const API_BASE = "http://localhost:3001/api"; 
+const API_BASE = "http://localhost:3001/api";
+const AUTH_BASE = "http://localhost:3002/api/auth";
 
 const PLAYERS_COUNT = 100; // 机器人数量
 const LOOP_COUNT = 50;    // 每个机器人行动的回合数 (测试回合)
@@ -73,13 +74,23 @@ class FarmAgent {
   }
 
   async register() {
-    const data = await this.request('/player', 'POST', { name: this.name });
-    if (data) {
-      this.playerId = data.id;
-      this.apiKey = data.apiKey;
-      this.gold = data.gold;
-      this.log(`注册成功 (ID: ${this.playerId.slice(0, 4)}..)`);
-      return true;
+    // 注册走 AUTH_BASE
+    try {
+      const res = await fetch(`${AUTH_BASE}/player`, {
+        method: 'POST',
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: this.name })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        this.playerId = data.id;
+        this.apiKey = data.apiKey;
+        this.gold = data.gold;
+        this.log(`注册成功 (ID: ${this.playerId.slice(0, 4)}..)`);
+        return true;
+      }
+    } catch (e) {
+      console.error(`[${this.name}] Register Error: ${e.message}`);
     }
     return false;
   }

@@ -5,6 +5,7 @@
 
 // Next.js 使用 NEXT_PUBLIC_ 前缀的环境变量
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL || API_BASE;
 
 // 通用请求函数
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -251,11 +252,23 @@ export const publicApi = {
 
   getCrops: () => request<Crop[]>('/crops'),
 
-  createPlayer: (name: string) =>
-    request<Player>('/player', {
+  createPlayer: async (name: string) => {
+    const url = `${AUTH_BASE}/player`;
+    const response = await fetch(url, {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({ name }),
-    }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || 'Request failed');
+    }
+
+    return response.json();
+  },
 };
 
 // ==================== Agent API (旧版兼容/完整实例) ====================
