@@ -30,10 +30,6 @@ model Player {
   following Follow[] @relation("Following") 
   followers Follow[] @relation("Followers") 
   
-  // 偷菜记录
-  steals        StealRecord[] @relation("Stealer")
-  stolenFrom    StealRecord[] @relation("Victim")
-  
   notifications Notification[]
 }
 
@@ -82,19 +78,6 @@ model Follow {
   createdAt   DateTime @default(now())
 
   @@unique([followerId, followingId])
-}
-
-model StealRecord {
-  id        Int      @id @default(autoincrement())
-  stealer   Player   @relation("Stealer", fields: [stealerId], references: [id], onDelete: Cascade)
-  stealerId String
-  victim    Player   @relation("Victim", fields: [victimId], references: [id], onDelete: Cascade)
-  victimId  String
-  landPos   Int
-  cropType  String
-  amount    Int      
-  goldValue Int      
-  createdAt DateTime @default(now())
 }
 
 model Notification {

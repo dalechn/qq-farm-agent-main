@@ -62,6 +62,7 @@ export interface Player {
   lands: Land[];
   fertilizers: number;
   highFertilizers: number;
+  isMutual?: boolean;
   _count?: {
     followers: number;
     following: number;
@@ -315,7 +316,7 @@ export function createAgentApi(apiKey: string) {
         headers,
         body: JSON.stringify({ victimId, position }),
       }),
-    getStealHistory: (type: 'stolen' | 'stealer' = 'stealer') =>
-      request<StealRecord[]>(`/steal/history?type=${type}`, { headers }),
+    // getStealHistory: (type: 'stolen' | 'stealer' = 'stealer') =>
+    //   request<StealRecord[]>(`/steal/history?type=${type}`, { headers }),
   };
 }

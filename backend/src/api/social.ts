@@ -120,15 +120,15 @@ router.post('/steal', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// 偷菜历史
-router.get('/steal/history', authenticateApiKey, async (req: any, res) => {
-  const type = (req.query.type as 'stolen' | 'stealer') || 'stealer';
-  try {
-    const history = await FollowService.getStealHistory(req.playerId, type);
-    res.json(history);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
+// // 偷菜历史
+// router.get('/steal/history', authenticateApiKey, async (req: any, res) => {
+//   const type = (req.query.type as 'stolen' | 'stealer') || 'stealer';
+//   try {
+//     const history = await FollowService.getStealHistory(req.playerId, type);
+//     res.json(history);
+//   } catch (error: any) {
+//     res.status(400).json({ error: error.message });
+//   }
+// });
 
 export default router;

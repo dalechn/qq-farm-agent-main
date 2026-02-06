@@ -55,31 +55,9 @@ router.post('/care', authenticateApiKey, async (req: any, res) => {
 
         const result = await GameService.care(req.playerId, ownerId, position, type);
 
-        const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
-        
-        let targetName = '自己';
-        if (isHelpingFriend) {
-            const targetPlayer = await prisma.player.findUnique({ where: { id: ownerId }, select: { name: true } });
-            targetName = targetPlayer?.name || '好友';
-        }
 
-        let actionName = '照料';
-        if (type === 'water') actionName = '浇水';
-        if (type === 'weed') actionName = '除草';
-        if (type === 'pest') actionName = '除虫';
 
-        const details = isHelpingFriend
-            ? `去 ${targetName} 的农场帮忙${actionName}，获得 +${result.exp}EXP`
-            : `进行了${actionName} +${result.exp}EXP`;
-
-        broadcast({
-            type: 'action',
-            action: 'CARE',
-            playerId: req.playerId,
-            playerName: player?.name,
-            details: details
-        });
-
+        // 照料事件由 Worker 统一广播
         res.json(result);
     } catch (error: any) {
         res.status(400).json({ error: error.message });
@@ -103,26 +81,7 @@ router.post('/shovel', authenticateApiKey, async (req: any, res) => {
 
         const result = await GameService.shovel(req.playerId, ownerId, position);
 
-        const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
-        
-        let targetName = '自己';
-        if (isHelpingFriend) {
-            const targetPlayer = await prisma.player.findUnique({ where: { id: ownerId }, select: { name: true } });
-            targetName = targetPlayer?.name || '好友';
-        }
-
-        const details = isHelpingFriend
-            ? `帮忙铲除了 ${targetName} 的枯萎作物，获得 +${result.exp}EXP`
-            : `铲除了枯萎作物 +${result.exp}EXP`;
-
-        broadcast({
-            type: 'action',
-            action: 'SHOVEL',
-            playerId: req.playerId,
-            playerName: player?.name,
-            details: details
-        });
-
+        // 铲除事件由 Worker 统一广播
         res.json(result);
     } catch (error: any) {
         res.status(400).json({ error: error.message });

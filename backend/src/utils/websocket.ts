@@ -1,9 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
 import prisma from './prisma';
-import { redisClient, redisSubscriber } from './redis';
+import { redisClient, redisSubscriber, KEY_GLOBAL_LOGS, KEY_PLAYER_LOGS_PREFIX } from './redis';
 import { v4 as uuidv4 } from 'uuid';
-import { KEY_GLOBAL_LOGS, KEY_PLAYER_LOGS_PREFIX } from '../config/redis-keys';
 
 const playerConnections = new Map<string, Set<WebSocket>>();
 const guestConnections = new Set<WebSocket>();
@@ -13,7 +12,7 @@ const CHANNEL_NAME = 'farm_global_events';
 const LOG_RETENTION_SECONDS = 24 * 60 * 60; // 24小时
 const LOG_RETENTION_MS = LOG_RETENTION_SECONDS * 1000;
 
-// [修改] Key 定义已迁移到 config/redis-keys.ts
+// [修改] Key 定义已迁移到 utils/redis.ts
 
 export function setupWebSocket(server: Server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -71,7 +70,7 @@ export function setupWebSocket(server: Server) {
     });
   });
 
-  startMatureChecker();
+  // startMatureChecker();
   console.log('🔌 WebSocket server initialized');
   return wss;
 }

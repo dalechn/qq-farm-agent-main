@@ -12,11 +12,11 @@ import {
   import { type Player, type FollowUser, getFollowers, getFollowing } from "@/lib/api";
   import { LandTile } from "@/components/LandTile";
   import { useState, useEffect } from "react";
-
+  
   import { PatrolDog } from "@/components/PatrolDog";
   import { DebugSidebar } from "@/components/DebugSidebar";
   import { UserListSidebar } from "@/components/UserListSidebar";
-
+  
   // 辅助组件：面板标题
   function PanelHeader({ 
     title, 
@@ -32,7 +32,7 @@ import {
     rightContent?: React.ReactNode
   }) {
     return (
-      <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center justify-between px-3 select-none">
+      <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center justify-between px-3 select-none z-20 relative">
         <div className="flex items-center gap-2">
             {showBack && (
             <button 
@@ -66,7 +66,7 @@ import {
     isPlayerLoading: boolean;
     showOnMobile: boolean;
   }
-
+  
   const TOTAL_LAND_SLOTS = 18;
   
   export function FarmViewport({ 
@@ -78,21 +78,19 @@ import {
     const router = useRouter();
     const isLoading = isSearching || isPlayerLoading;
     
-    // [修改] 控制调试侧边栏的状态
+    // 控制调试侧边栏的状态
     const [showDebugSidebar, setShowDebugSidebar] = useState(false);
-
-    // [新增] 用户列表弹窗状态
+  
+    // 用户列表弹窗状态
     const [isUserListSidebarOpen, setIsUserListSidebarOpen] = useState(false);
     const [userListSidebarType, setUserListSidebarType] = useState<'following' | 'followers'>('following');
     const [userListPlayerId, setUserListPlayerId] = useState<string>('');
     
-    // 保留 debugMode 状态用于前端视觉调试（如强制显示狗的特定状态），如果不需要可以移除
-    // 这里暂时设为 false，主要逻辑移交给 Sidebar
     const debugMode = false; 
   
     // 计算狗是否处于激活状态
     const now = new Date();
-    // @ts-ignore: 假设 Player 接口中有 dogActiveUntil 和 hasDog
+    // @ts-ignore
     const activeUntil = selectedPlayer?.dogActiveUntil ? new Date(selectedPlayer.dogActiveUntil) : null;
     // @ts-ignore
     const hasDog = !!selectedPlayer?.hasDog;
@@ -140,16 +138,15 @@ import {
     }
   
     return (
-      <section className={`flex-1 flex flex-col bg-[#292524] min-w-0 relative ${!showOnMobile ? 'hidden lg:flex' : 'flex'}`}>
+      // [修复] 添加 h-full 和 overflow-hidden，强制 section 占满父容器且不溢出
+      <section className={`flex-1 flex flex-col bg-[#292524] min-w-0 relative h-full overflow-hidden ${!showOnMobile ? 'hidden lg:flex' : 'flex'}`}>
         
-        {/* [新增] 调试侧边栏组件 */}
         <DebugSidebar
             isOpen={showDebugSidebar}
             onClose={() => setShowDebugSidebar(false)}
             currentPlayerId={selectedPlayer?.id}
         />
-
-        {/* [新增] 用户列表弹窗 */}
+  
         <UserListSidebar
             isOpen={isUserListSidebarOpen}
             onClose={() => setIsUserListSidebarOpen(false)}
@@ -163,7 +160,6 @@ import {
           showBack={showOnMobile}
           onBack={() => router.push('/')}
           rightContent={
-              // [修改] 按钮点击打开 Sidebar
               <button 
                 onClick={() => setShowDebugSidebar(true)}
                 className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono border transition-all bg-stone-900 border-stone-700 text-stone-500 hover:text-stone-300 hover:border-orange-500 hover:text-orange-500`}
@@ -180,9 +176,11 @@ import {
               <p>FETCHING DATA...</p>
            </div>
         ) : selectedPlayer ? (
-          <div className="flex-1 flex flex-col min-h-0 bg-[#292524]">
-            {/* 玩家信息 Header */}
-            <div className="flex-none p-4 border-b-2 border-stone-700 bg-stone-800/50">
+          // [修复] 确保内部容器也是 flex-col 并且高度受限
+          <div className="flex-1 flex flex-col min-h-0 bg-[#292524] overflow-hidden">
+            
+            {/* 玩家信息 Header (固定不滚动) */}
+            <div className="flex-none p-4 border-b-2 border-stone-700 bg-stone-800/50 z-10">
               <div className="flex justify-between items-start gap-4">
                 
                 {/* 左侧：头像与信息 */}
@@ -266,7 +264,7 @@ import {
               </div>
             </div>
   
-            {/* 土地网格区域 */}
+            {/* 土地网格区域 (可滚动) */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[#292524] min-h-0 relative shadow-[inset_0_10px_30px_rgba(0,0,0,0.3)]">
                <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
   
@@ -289,7 +287,6 @@ import {
                      <MiniStat label="RIPE" value={selectedPlayer.lands.filter((l) => l.status === "harvestable").length} color="text-green-200" bg="bg-green-900" />
                      <MiniStat label="DEAD" value={selectedPlayer.lands.filter((l) => l.status === "withered").length} color="text-red-200" bg="bg-red-900" />
                      
-                     {/* Security Status MiniStat */}
                      <MiniStat 
                         label="SEC" 
                         value={secConfig.value} 
@@ -299,12 +296,10 @@ import {
                   </div>
                </div>
   
-              {/* 网格容器：这是狗巡逻的相对参照物 */}
-              <div className="relative max-w-2xl mx-auto">
-                  {/* 巡逻狗层 */}
+              {/* 网格容器 */}
+              <div className="relative max-w-2xl mx-auto pb-10">
                   <PatrolDog isActive={isDogActive} isDebug={debugMode} />
   
-                  {/* 土地 Grid */}
                   <div className="grid grid-cols-3 gap-6 relative z-10">
                     {Array.from({ length: TOTAL_LAND_SLOTS }).map((_, index) => {
                       const land = selectedPlayer.lands.find(l => l.position === index);

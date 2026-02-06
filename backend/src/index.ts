@@ -46,6 +46,8 @@ async function start() {
   const server = createServer(app);
   setupWebSocket(server);
 
+  
+
   server.listen(PORT, () => {
     console.log(`🚀 Backend running on http://localhost:${PORT}`);
     console.log(`🔌 WebSocket available at ws://localhost:${PORT}/ws`);

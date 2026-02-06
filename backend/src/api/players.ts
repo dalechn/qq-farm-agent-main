@@ -2,10 +2,9 @@
 
 import { Router } from 'express';
 import prisma from '../utils/prisma';
-import { redisClient } from '../utils/redis';
+import { redisClient, KEY_GLOBAL_LOGS, KEY_PLAYER_LOGS_PREFIX } from '../utils/redis';
 import { GameService } from '../services/GameService';
 import { authenticateApiKey } from '../middleware/auth';
-import { KEY_GLOBAL_LOGS, KEY_PLAYER_LOGS_PREFIX } from '../config/redis-keys';
 
 const router: Router = Router();
 

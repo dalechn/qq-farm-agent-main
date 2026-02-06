@@ -1,11 +1,20 @@
 // backend/src/services/GameService.ts
 
 import prisma from '../utils/prisma';
-import { 
-  redisClient, 
-  acquireLock, 
-  releaseLock, 
-  updateLeaderboard 
+import {
+  redisClient,
+  acquireLock,
+  releaseLock,
+  updateLeaderboard,
+  getPlayerStateKey,
+  invalidatePlayerCache,
+  getLandLockKey,
+  getPlayerExpandLockKey,
+  getPlayerDogLockKey,
+  checkAndMarkCareToday,
+  checkAndMarkShovelToday,
+  QUEUE_CARE_EVENTS,
+  QUEUE_SHOVEL_EVENTS
 } from '../utils/redis';
 import { GAME_CONFIG } from '../config/game-keys';
 
@@ -22,19 +31,9 @@ const STATE_CACHE_TTL = 10;
 
 export class GameService {
   
-  // 辅助：生成玩家状态的缓存 Key
-  private static getPlayerStateKey(playerId: string) {
-    return `player_state:${playerId}`;
-  }
-
-  // 辅助：清除玩家缓存 (在任何写操作后调用)
-  private static async invalidateCache(playerId: string) {
-    await redisClient.del(this.getPlayerStateKey(playerId));
-  }
-
   // ================= 核心优化：获取玩家状态 (缓存 + 批量更新) =================
   static async getPlayerState(playerId: string) {
-    const cacheKey = this.getPlayerStateKey(playerId);
+    const cacheKey = getPlayerStateKey(playerId);
 
     // 1. 尝试从 Redis 获取缓存
     const cachedData = await redisClient.get(cacheKey);
@@ -138,7 +137,7 @@ export class GameService {
     });
     if (!land) throw new Error('Land not found');
 
-    const lockKey = `lock:land:${land.id}`;
+    const lockKey = getLandLockKey(land.id);
     // 2. 尝试获取分布式锁
     if (!await acquireLock(lockKey)) {
       throw new Error('操作太频繁，请稍后再试');
@@ -192,7 +191,7 @@ export class GameService {
       updateLeaderboard('gold', playerId, updatedPlayer.gold).catch(console.error);
       
       // 4. 清除缓存
-      await this.invalidateCache(playerId);
+      await invalidatePlayerCache(playerId);
 
       return updatedLand;
 
@@ -202,7 +201,7 @@ export class GameService {
     }
   }
 
-  // ================= 优化：照料 (加锁 + 清缓存) =================
+  // ================= 照料 (加锁 + 防刷 + 通知) =================
   static async care(operatorId: string, ownerId: string, position: number, type: 'water' | 'weed' | 'pest') {
     // 先查 landId
     const land = await prisma.land.findUnique({
@@ -210,15 +209,20 @@ export class GameService {
     });
     if (!land) throw new Error('Land not found');
 
-    const lockKey = `lock:land:${land.id}`;
+    const lockKey = getLandLockKey(land.id);
     if (!await acquireLock(lockKey)) throw new Error('Land is busy');
 
     try {
       // Double check status inside lock is recommended but omitted for brevity if Logic ensures logic check
       if (land.status !== 'planted') throw new Error('Can only care for growing crops');
 
+      // 每日防刷检查 (Redis)
+      const alreadyCared = await checkAndMarkCareToday(operatorId, ownerId, position, type);
+      if (alreadyCared) throw new Error('Already cared today');
+
       let updateData: any = {};
-      const expReward = 10; 
+      const expReward = 10;
+      const careTypeNames = { water: '浇水', weed: '除草', pest: '除虫' };
 
       if (type === 'water') {
           if (!land.needsWater) throw new Error('No water needed');
@@ -233,23 +237,45 @@ export class GameService {
           throw new Error('Invalid care type');
       }
 
+      // 获取操作者名字（用于通知）
+      const operator = await prisma.player.findUnique({
+        where: { id: operatorId },
+        select: { name: true }
+      });
+
       const [updatedLand, updatedOperator] = await prisma.$transaction([
         prisma.land.update({ where: { id: land.id }, data: updateData }),
         prisma.player.update({ where: { id: operatorId }, data: { exp: { increment: expReward } } })
       ]);
-      
+
       const newLevel = Math.floor(Math.sqrt(updatedOperator.exp / 10)) + 1;
       if (newLevel !== updatedOperator.level) {
         await prisma.player.update({ where: { id: operatorId }, data: { level: newLevel } });
         updateLeaderboard('level', operatorId, newLevel).catch(console.error);
       }
 
+      // 发送照料通知给土地所有者（如果是帮别人照料）
+      if (operatorId !== ownerId) {
+        const eventData = {
+          type: 'CARE_EVENT',
+          operatorId,
+          operatorName: operator?.name,
+          ownerId,
+          position,
+          careType: type,
+          careTypeName: careTypeNames[type],
+          expReward,
+          timestamp: new Date().toISOString()
+        };
+        await redisClient.lPush(QUEUE_CARE_EVENTS, JSON.stringify(eventData));
+      }
+
       // 清除缓存 (注意：如果操作的是别人的地，要清两个人的缓存？)
       // owner 的地状态变了 -> 清 owner
       // operator 的经验变了 -> 清 operator
-      await this.invalidateCache(ownerId);
+      await invalidatePlayerCache(ownerId);
       if (ownerId !== operatorId) {
-        await this.invalidateCache(operatorId);
+        await invalidatePlayerCache(operatorId);
       }
 
       return { success: true, exp: expReward, land: updatedLand };
@@ -267,7 +293,7 @@ export class GameService {
     if (!land) throw new Error('Land not found');
 
     // ★ 关键：分布式锁
-    const lockKey = `lock:land:${land.id}`;
+    const lockKey = getLandLockKey(land.id);
     if (!await acquireLock(lockKey)) throw new Error('Harvesting too fast!');
 
     try {
@@ -340,7 +366,7 @@ export class GameService {
       }
 
       // 清缓存
-      await this.invalidateCache(playerId);
+      await invalidatePlayerCache(playerId);
 
       return { 
           gold: netIncome, 
@@ -355,21 +381,31 @@ export class GameService {
     }
   }
 
-  // ================= 优化：铲除 (加锁) =================
+  // ================= 铲除 (加锁 + 防刷 + 通知) =================
   static async shovel(operatorId: string, ownerId: string, position: number) {
     const land = await prisma.land.findUnique({
         where: { playerId_position: { playerId: ownerId, position } }
     });
     if (!land) throw new Error('Land not found');
 
-    const lockKey = `lock:land:${land.id}`;
+    const lockKey = getLandLockKey(land.id);
     if (!await acquireLock(lockKey)) throw new Error('Land is busy');
 
     try {
         if (land.status !== 'withered') throw new Error('Nothing to shovel');
 
-        const expReward = 15; 
+        // 每日防刷检查 (Redis)
+        const alreadyShoveled = await checkAndMarkShovelToday(operatorId, ownerId, position);
+        if (alreadyShoveled) throw new Error('Already shoveled today');
+
+        const expReward = 15;
         const now = new Date();
+
+        // 获取操作者名字（用于通知）
+        const operator = await prisma.player.findUnique({
+          where: { id: operatorId },
+          select: { name: true }
+        });
 
         const [updatedLand, updatedOperator] = await prisma.$transaction([
             prisma.land.update({
@@ -388,7 +424,7 @@ export class GameService {
                 }
             }),
             prisma.player.update({
-                where: { id: operatorId }, 
+                where: { id: operatorId },
                 data: { exp: { increment: expReward } }
             })
         ]);
@@ -399,8 +435,22 @@ export class GameService {
             updateLeaderboard('level', operatorId, newLevel).catch(console.error);
         }
 
-        await this.invalidateCache(ownerId);
-        if (operatorId !== ownerId) await this.invalidateCache(operatorId);
+        // 发送铲除通知给土地所有者（如果是帮别人铲除）
+        if (operatorId !== ownerId) {
+          const eventData = {
+            type: 'SHOVEL_EVENT',
+            operatorId,
+            operatorName: operator?.name,
+            ownerId,
+            position,
+            expReward,
+            timestamp: now.toISOString()
+          };
+          await redisClient.lPush(QUEUE_SHOVEL_EVENTS, JSON.stringify(eventData));
+        }
+
+        await invalidatePlayerCache(ownerId);
+        if (operatorId !== ownerId) await invalidatePlayerCache(operatorId);
 
         return { success: true, exp: expReward, land: updatedLand };
     } finally {
@@ -411,7 +461,7 @@ export class GameService {
   // ================= 优化：扩建 (加锁 - 锁玩家) =================
   // 扩建不针对特定土地，而是针对玩家资产，建议锁玩家
   static async expandLand(playerId: string) {
-    const lockKey = `lock:player_expand:${playerId}`;
+    const lockKey = getPlayerExpandLockKey(playerId);
     if (!await acquireLock(lockKey)) throw new Error('System processing');
 
     try {
@@ -443,7 +493,7 @@ export class GameService {
           })
         ]);
 
-        await this.invalidateCache(playerId);
+        await invalidatePlayerCache(playerId);
 
         return { success: true, newPosition, cost: expandCost };
     } finally {
@@ -458,7 +508,7 @@ export class GameService {
     });
     if (!land) throw new Error('Land not found');
 
-    const lockKey = `lock:land:${land.id}`;
+    const lockKey = getLandLockKey(land.id);
     if (!await acquireLock(lockKey)) throw new Error('System processing');
 
     try {
@@ -482,7 +532,7 @@ export class GameService {
            })
         ]);
 
-        await this.invalidateCache(playerId);
+        await invalidatePlayerCache(playerId);
         
         // updateMany 这里的返回值在 transaction 里是数组
         return { success: true, land: updatedLand[1] };
@@ -498,7 +548,7 @@ export class GameService {
     });
     if (!land) throw new Error('Land not found');
 
-    const lockKey = `lock:land:${land.id}`;
+    const lockKey = getLandLockKey(land.id);
     if (!await acquireLock(lockKey)) throw new Error('Busy');
 
     try {
@@ -524,7 +574,7 @@ export class GameService {
           })
         ]);
 
-        await this.invalidateCache(playerId);
+        await invalidatePlayerCache(playerId);
         return { success: true, newMatureAt, type, cost: config.price };
     } finally {
         await releaseLock(lockKey);
@@ -533,7 +583,7 @@ export class GameService {
 
   // 买狗和喂狗 涉及金币操作，建议也加上简单的锁防止双击购买
   static async buyDog(playerId: string) {
-    const lockKey = `lock:player_dog:${playerId}`;
+    const lockKey = getPlayerDogLockKey(playerId);
     if (!await acquireLock(lockKey)) throw new Error('Processing');
 
     try {
@@ -549,7 +599,7 @@ export class GameService {
             dogActiveUntil: new Date()
           }
         });
-        await this.invalidateCache(playerId);
+        await invalidatePlayerCache(playerId);
         return { success: true };
     } finally {
         await releaseLock(lockKey);
@@ -557,7 +607,7 @@ export class GameService {
   }
 
   static async feedDog(playerId: string) {
-    const lockKey = `lock:player_dog:${playerId}`;
+    const lockKey = getPlayerDogLockKey(playerId);
     if (!await acquireLock(lockKey)) throw new Error('Processing');
     try {
         const player = await prisma.player.findUnique({ where: { id: playerId } });
@@ -578,7 +628,7 @@ export class GameService {
             dogActiveUntil: newActiveUntil
           }
         });
-        await this.invalidateCache(playerId);
+        await invalidatePlayerCache(playerId);
         return { success: true, activeUntil: newActiveUntil };
     } finally {
         await releaseLock(lockKey);

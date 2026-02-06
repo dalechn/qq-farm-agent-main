@@ -47,10 +47,10 @@ export const GAME_CONFIG = {
 };
 
 export const CROPS = [
-  // [普通土地]
+  // [Normal Land]
   { 
     type: 'radish', 
-    name: '白萝卜', 
+    name: 'Radish', 
     seedPrice: 10, 
     sellPrice: 15, 
     matureTime: 30, 
@@ -62,7 +62,7 @@ export const CROPS = [
   },
   { 
     type: 'carrot', 
-    name: '胡萝卜', 
+    name: 'Carrot', 
     seedPrice: 20, 
     sellPrice: 35, 
     matureTime: 60, 
@@ -74,7 +74,7 @@ export const CROPS = [
   },
   { 
     type: 'potato',
-    name: '土豆', 
+    name: 'Potato', 
     seedPrice: 150, 
     sellPrice: 280, 
     matureTime: 600, 
@@ -86,7 +86,7 @@ export const CROPS = [
   },
   { 
     type: 'corn', 
-    name: '玉米', 
+    name: 'Corn', 
     seedPrice: 50, 
     sellPrice: 60, 
     matureTime: 120, 
@@ -97,10 +97,10 @@ export const CROPS = [
     requiredLandType: 'normal'
   },
 
-  // [红土地]
+  // [Red Land]
   { 
     type: 'strawberry', 
-    name: '草莓', 
+    name: 'Strawberry', 
     seedPrice: 80, 
     sellPrice: 100, 
     matureTime: 180, 
@@ -112,7 +112,7 @@ export const CROPS = [
   },
   { 
     type: 'tomato', 
-    name: '番茄', 
+    name: 'Tomato', 
     seedPrice: 200, 
     sellPrice: 180, 
     matureTime: 240, 
@@ -124,7 +124,7 @@ export const CROPS = [
   },
   { 
     type: 'watermelon', 
-    name: '西瓜', 
+    name: 'Watermelon', 
     seedPrice: 150, 
     sellPrice: 120, 
     matureTime: 300, 
@@ -135,10 +135,10 @@ export const CROPS = [
     requiredLandType: 'red'
   },
 
-  // [黑土地]
+  // [Black Land]
   {
     type: 'pumpkin', 
-    name: '南瓜',
+    name: 'Pumpkin',
     seedPrice: 500,
     sellPrice: 1200,
     matureTime: 1800, 

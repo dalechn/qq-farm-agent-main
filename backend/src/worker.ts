@@ -2,9 +2,8 @@
 
 import dotenv from 'dotenv';
 import prisma from './utils/prisma';
-import { redisClient } from './utils/redis';
+import { redisClient, QUEUE_STEAL_EVENTS, QUEUE_SOCIAL_EVENTS, QUEUE_CARE_EVENTS, QUEUE_SHOVEL_EVENTS } from './utils/redis';
 import { broadcast } from './utils/websocket';
-import { QUEUE_STEAL_EVENTS, QUEUE_SOCIAL_EVENTS } from './config/redis-keys';
 
 dotenv.config();
 
@@ -101,20 +100,7 @@ async function processStealEvent(event: any) {
     if (type === 'STEAL_SUCCESS') {
       const { cropName, cropType, amount, goldValue } = event;
 
-      // 1. 异步写日志 (StealRecord)
-      await prisma.stealRecord.create({
-        data: {
-          stealerId,
-          victimId,
-          landPos: position,
-          cropType,
-          amount,
-          goldValue,
-          createdAt: time
-        }
-      });
-
-      // 2. 异步写通知 (Notification)
+      // 1. 异步写通知 (Notification)
       await prisma.notification.create({
         data: {
           playerId: victimId,
@@ -124,7 +110,7 @@ async function processStealEvent(event: any) {
         }
       });
 
-      // 3. 异步广播 (WebSocket + Redis Log)
+      // 2. 异步广播 (WebSocket + Redis Log)
       await broadcast({
         type: 'action',
         action: 'STEAL',
@@ -167,6 +153,90 @@ async function processStealEvent(event: any) {
 }
 
 /**
+ * 处理照料事件 (浇水/除草/除虫)
+ */
+async function processCareEvent(event: any) {
+  const { operatorId, operatorName, ownerId, position, careType, careTypeName, expReward, timestamp } = event;
+  const time = new Date(timestamp);
+
+  try {
+    // 获取土地所有者名字
+    const owner = await prisma.player.findUnique({
+      where: { id: ownerId },
+      select: { name: true }
+    });
+    if (!owner) return;
+
+    // 发送照料通知给土地所有者
+    await prisma.notification.create({
+      data: {
+        playerId: ownerId,
+        type: 'care',
+        message: `${operatorName} 给你的位置 ${position} 浇了水！`,
+        data: JSON.stringify({ operatorId, operatorName, position, careType, expReward })
+      }
+    });
+
+    // 广播
+    await broadcast({
+      type: 'action',
+      action: 'CARE',
+      playerId: operatorId,
+      playerName: operatorName,
+      details: `给 ${owner.name} 的土地 ${careTypeName} (+${expReward} 经验)`,
+      timestamp: time.toISOString()
+    });
+
+    console.log(`[Worker] 💧 Processed CARE: ${operatorName} -> ${owner.name} (${careTypeName})`);
+
+  } catch (err) {
+    console.error(`[Worker] ❌ Error processing care event:`, err);
+  }
+}
+
+/**
+ * 处理铲除枯萎作物事件
+ */
+async function processShovelEvent(event: any) {
+  const { operatorId, operatorName, ownerId, position, expReward, timestamp } = event;
+  const time = new Date(timestamp);
+
+  try {
+    // 获取土地所有者名字
+    const owner = await prisma.player.findUnique({
+      where: { id: ownerId },
+      select: { name: true }
+    });
+    if (!owner) return;
+
+    // 发送铲除通知给土地所有者
+    await prisma.notification.create({
+      data: {
+        playerId: ownerId,
+        type: 'shovel',
+        message: `${operatorName} 帮你铲除了位置 ${position} 的枯萎作物！`,
+        data: JSON.stringify({ operatorId, operatorName, position, expReward })
+      }
+    });
+
+    // 广播
+    await broadcast({
+      type: 'action',
+      action: 'SHOVEL',
+      playerId: operatorId,
+      playerName: operatorName,
+      details: `帮 ${owner.name} 铲除枯萎作物 (+${expReward} 经验)`,
+      timestamp: time.toISOString()
+    });
+
+    console.log(`[Worker] 🔧 Processed SHOVEL: ${operatorName} -> ${owner.name}`);
+
+  } catch (err) {
+    console.error(`[Worker] ❌ Error processing shovel event:`, err);
+  }
+}
+
+/**
  * 启动 Worker 循环
  */
 async function startWorker() {
@@ -175,15 +245,16 @@ async function startWorker() {
     await redisClient.connect();
   }
 
-  console.log('👷 Worker is listening for events (Steal & Social)...');
+  console.log('👷 Worker is listening for events (Steal & Social & Care & Shovel)...');
 
   while (true) {
     try {
-      // 阻塞式拉取，同时监听两个队列
-      // 0 表示无限等待，直到有数据
+      // 阻塞式拉取，同时监听四个队列
       const result = await redisClient.brPop([
         QUEUE_STEAL_EVENTS,
-        QUEUE_SOCIAL_EVENTS
+        QUEUE_SOCIAL_EVENTS,
+        QUEUE_CARE_EVENTS,
+        QUEUE_SHOVEL_EVENTS
       ], 0);
 
       if (result) {
@@ -194,6 +265,10 @@ async function startWorker() {
           await processStealEvent(event);
         } else if (key === QUEUE_SOCIAL_EVENTS) {
           await processSocialEvent(event);
+        } else if (key === QUEUE_CARE_EVENTS) {
+          await processCareEvent(event);
+        } else if (key === QUEUE_SHOVEL_EVENTS) {
+          await processShovelEvent(event);
         }
       }
     } catch (error) {
