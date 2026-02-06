@@ -1,221 +1,148 @@
 // backend/src/api/game.ts
 
 import { Router } from 'express';
-import prisma from '../utils/prisma';
 import { GameService } from '../services/GameService';
 import { authenticateApiKey } from '../middleware/auth';
-import { broadcast } from '../utils/websocket';
+import { CROPS } from '../utils/game-keys';
+import { redisClient, KEYS } from '../utils/redis'; // 引入 Redis 客户端直接取 Name
+import prisma from '../utils/prisma';
 
 const router: Router = Router();
 
-// 获取作物列表
-router.get('/crops', async (req, res) => {
-  const crops = await prisma.crop.findMany();
-  res.json(crops);
-});
+// ==========================================
+// 1. 玩家查询接口 (优先 Redis)
+// ==========================================
 
-// 种植 (只能种自己的)
-router.post('/plant', authenticateApiKey, async (req: any, res) => {
-  const { position, cropType } = req.body;
-
+// 获取当前玩家状态
+// 完全走 Redis，不查 DB，不查 Count
+router.get('/me', authenticateApiKey, async (req: any, res) => {
   try {
-    // 查询玩家名字（避免 Worker 重复查询）
-    const player = await prisma.player.findUnique({
-      where: { id: req.playerId },
-      select: { name: true }
-    });
-
-    const result = await GameService.plant(
-      req.playerId,
-      player?.name || 'Unknown',
-      position,
-      cropType
-    );
-
-    // 种植事件由 Worker 统一广播
-    res.json({ success: true, result });
+    const state = await GameService.getPlayerState(req.playerId);
+    res.json(state);
   } catch (error: any) {
-    res.status(400).json({ error: error.message });
+    console.error('Get me error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// 照料 (浇水/除草/杀虫)
-router.post('/care', authenticateApiKey, async (req: any, res) => {
-    const { position, type, targetId } = req.body;
+// 查看他人主页
+// 仅保留 Name -> ID 的必要 DB 查询 (因为 Redis 没有 Name 索引)
+// 获取到 ID 后，数据全部从 Redis 读取
+router.get('/users/:name', async (req, res) => {
+  try {
+    const name = decodeURIComponent(req.params.name);
+    
+    // 1. 极简 DB 查询：只拿 ID
+    const user = await prisma.player.findFirst({
+      where: { name: name },
+      select: { id: true }
+    });
 
-    const operatorId = req.playerId;
-    const ownerId = targetId || req.playerId;
-
-    try {
-        // 查询操作者和土地所有者的名字（避免 Worker 重复查询）
-        const [operator, owner] = await Promise.all([
-            prisma.player.findUnique({ where: { id: operatorId }, select: { name: true } }),
-            prisma.player.findUnique({ where: { id: ownerId }, select: { name: true } })
-        ]);
-
-        const result = await GameService.care(
-            operatorId,
-            operator?.name || 'Unknown',
-            ownerId,
-            owner?.name || 'Unknown',
-            position,
-            type
-        );
-
-        // 照料事件由 Worker 统一广播
-        res.json(result);
-    } catch (error: any) {
-        res.status(400).json({ error: error.message });
+    if (!user) {
+      res.status(404).json({ error: 'Player not found' });
+      return; 
     }
+
+    // 2. 从 Redis 获取热数据 (含 id, name, gold, lands...)
+    const playerState = await GameService.getPlayerState(user.id);
+    res.json(playerState);
+
+  } catch (error) {
+    console.error('Get user error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
-// 铲除枯萎作物
-router.post('/shovel', authenticateApiKey, async (req: any, res) => {
-    const { position, targetId } = req.body;
+// 排行榜
+// DB 负责排序 ID -> Redis 负责提供数据
+router.get('/players', async (req, res) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  const skip = (page - 1) * limit;
 
-    const operatorId = req.playerId;
-    const ownerId = targetId || req.playerId;
+  try {
+    // 1. 从 DB 获取排序后的 ID 列表 (只查 ID，速度快)
+    const [usersFromDb, total] = await prisma.$transaction([
+      prisma.player.findMany({
+        select: { id: true },
+        orderBy: { gold: 'desc' },
+        skip,
+        take: limit
+      }),
+      prisma.player.count()
+    ]);
 
-    try {
-        // 查询操作者和土地所有者的名字（避免 Worker 重复查询）
-        const [operator, owner] = await Promise.all([
-            prisma.player.findUnique({ where: { id: operatorId }, select: { name: true } }),
-            prisma.player.findUnique({ where: { id: ownerId }, select: { name: true } })
-        ]);
+    // 2. 并发从 Redis 拉取这些玩家的实时数据
+    // 这样保证了前端看到的金币/经验是 Redis 里的最新值
+    const playersData = await Promise.all(
+      usersFromDb.map(async (u) => {
+        try {
+          // 只取 player 基础信息，不需要 lands 详情
+          const state = await GameService.getPlayerState(u.id);
+          return state.player; 
+        } catch (e) {
+          return null;
+        }
+      })
+    );
 
-        const result = await GameService.shovel(
-            operatorId,
-            operator?.name || 'Unknown',
-            ownerId,
-            owner?.name || 'Unknown',
-            position
-        );
+    const validPlayers = playersData.filter(p => p !== null);
 
-        // 铲除事件由 Worker 统一广播
-        res.json(result);
-    } catch (error: any) {
-        res.status(400).json({ error: error.message });
-    }
+    res.json({
+      data: validPlayers,
+      pagination: {
+        page, limit, total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: skip + usersFromDb.length < total
+      }
+    });
+  } catch (error) {
+    console.error('Leaderboard error:', error);
+    res.status(500).json({ error: 'Failed to fetch players' });
+  }
+});
+
+// ==========================================
+// 2. 基础配置
+// ==========================================
+router.get('/crops', (req, res) => {
+  res.json(CROPS);
+});
+
+// ==========================================
+// 3. 游戏操作 (全 Redis)
+// ==========================================
+
+// 辅助：从 Redis 获取玩家名字 (替代 DB 查询)
+async function getPlayerNameFromRedis(playerId: string): Promise<string> {
+  const name = await redisClient.hGet(KEYS.PLAYER(playerId), 'name');
+  return name || 'Farmer';
+}
+
+// 种植
+router.post('/plant', authenticateApiKey, async (req: any, res) => {
+  const { position, cropType } = req.body;
+  try {
+    // 直接从 Redis 拿名字，不再查库
+    const playerName = await getPlayerNameFromRedis(req.playerId);
+    
+    const result = await GameService.plant(
+      req.playerId,
+      playerName,
+      position,
+      cropType
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
 });
 
 // 收获
 router.post('/harvest', authenticateApiKey, async (req: any, res) => {
   const { position } = req.body;
-
   try {
-    // 查询玩家名字（避免 Worker 重复查询）
-    const player = await prisma.player.findUnique({
-      where: { id: req.playerId },
-      select: { name: true }
-    });
-
-    const reward = await GameService.harvest(
-      req.playerId,
-      player?.name || 'Unknown',
-      position
-    );
-
-    // 收获事件由 Worker 统一广播
-    res.json({ success: true, reward });
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// 扩建土地
-router.post('/land/expand', authenticateApiKey, async (req: any, res) => {
-  try {
-    const result = await GameService.expandLand(req.playerId);
-    
-    const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
-    broadcast({
-        type: 'action',
-        action: 'EXPAND',
-        playerId: req.playerId,
-        playerName: player?.name,
-        details: `Expanded to land #${result.newPosition + 1}`
-    });
-
-    res.json(result);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// 升级土地
-router.post('/land/upgrade', authenticateApiKey, async (req: any, res) => {
-  try {
-    const result = await GameService.upgradeLand(req.playerId, req.body.position);
-    
-    const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
-    broadcast({
-        type: 'action',
-        action: 'UPGRADE',
-        playerId: req.playerId,
-        playerName: player?.name,
-        details: `Upgraded land (position ${req.body.position})`
-    });
-    
-    res.json(result);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// 使用化肥
-router.post('/item/fertilizer', authenticateApiKey, async (req: any, res) => {
-  try {
-    const { position, type } = req.body;
-    const result = await GameService.useFertilizer(req.playerId, position, type);
-    
-    broadcast({
-      type: 'action',
-      action: 'FERTILIZE',
-      playerId: req.playerId,
-      position,
-      newMatureAt: result.newMatureAt
-    });
-    
-    res.json(result);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// [新增] 购买看守狗
-router.post('/dog/buy', authenticateApiKey, async (req: any, res) => {
-  try {
-    const result = await GameService.buyDog(req.playerId);
-    
-    const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
-    broadcast({
-        type: 'action',
-        action: 'BUY_DOG',
-        playerId: req.playerId,
-        playerName: player?.name,
-        details: `Adopted a watchdog`
-    });
-
-    res.json(result);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// [新增] 喂狗
-router.post('/dog/feed', authenticateApiKey, async (req: any, res) => {
-  try {
-    const result = await GameService.feedDog(req.playerId);
-    
-    const player = await prisma.player.findUnique({ where: { id: req.playerId }, select: { name: true } });
-    broadcast({
-      type: 'action',
-      action: 'FEED_DOG',
-      playerId: req.playerId,
-      playerName: player?.name,
-      details: `Fed the dog`
-    });
-    
+    const result = await GameService.harvest(req.playerId, position);
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -225,15 +152,87 @@ router.post('/dog/feed', authenticateApiKey, async (req: any, res) => {
 // 偷菜
 router.post('/steal', authenticateApiKey, async (req: any, res) => {
   const { victimId, position } = req.body;
-  const stealerId = req.playerId;
-
-  // 不能偷自己的菜
-  if (stealerId === victimId) {
-    return res.status(400).json({ error: 'Cannot steal from yourself' });
-  }
-
   try {
-    const result = await GameService.stealCrop(stealerId, victimId, position);
+    const result = await GameService.steal(req.playerId, victimId, position);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 照料
+router.post('/care', authenticateApiKey, async (req: any, res) => {
+  const { position, type, targetId } = req.body;
+  try {
+    const result = await GameService.care(
+      req.playerId,
+      targetId || req.playerId,
+      position,
+      type
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 铲除
+router.post('/shovel', authenticateApiKey, async (req: any, res) => {
+  const { position } = req.body;
+  try {
+    const result = await GameService.shovel(req.playerId, position);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 升级土地
+router.post('/upgrade-land', authenticateApiKey, async (req: any, res) => {
+  const { position } = req.body;
+  try {
+    const result = await GameService.upgradeLand(req.playerId, position);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 扩建
+router.post('/expand', authenticateApiKey, async (req: any, res) => {
+  try {
+    const result = await GameService.expandLand(req.playerId);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 施肥
+router.post('/fertilize', authenticateApiKey, async (req: any, res) => {
+  const { position, type } = req.body; 
+  try {
+    const result = await GameService.useFertilizer(req.playerId, position, type);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 买狗
+router.post('/dog/buy', authenticateApiKey, async (req: any, res) => {
+  try {
+    const result = await GameService.buyOrFeedDog(req.playerId, false);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// 喂狗
+router.post('/dog/feed', authenticateApiKey, async (req: any, res) => {
+  try {
+    const result = await GameService.buyOrFeedDog(req.playerId, true);
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
