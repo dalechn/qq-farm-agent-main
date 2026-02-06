@@ -10,7 +10,7 @@ import { setupWebSocket } from './utils/websocket';
 import playerRoutes from './api/players';
 import gameRoutes from './api/game';
 import socialRoutes from './api/social';
-import { CROPS } from './config/game-keys';
+import { CROPS } from './utils/game-keys';
 
 dotenv.config();
 

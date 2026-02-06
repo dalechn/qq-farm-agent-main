@@ -13,10 +13,10 @@ import {
   getPlayerDogLockKey,
   checkAndMarkCareToday,
   checkAndMarkShovelToday,
-  QUEUE_CARE_EVENTS,
-  QUEUE_SHOVEL_EVENTS
+  checkAndMarkStealToday,
+  QUEUE_FARM_EVENTS
 } from '../utils/redis';
-import { GAME_CONFIG } from '../config/game-keys';
+import { GAME_CONFIG, CROPS } from '../utils/game-keys';
 
 const LAND_LIMIT = GAME_CONFIG.LAND.MAX_LIMIT;
 const LAND_LEVELS = GAME_CONFIG.LAND_LEVELS;
@@ -127,7 +127,7 @@ export class GameService {
     return finalResult;
   }
 
-  // ================= 优化：种植 (加锁 + 清缓存) =================
+  // ================= 优化：种植 (加锁 + 清缓存 + 队列广播) =================
   static async plant(playerId: string, position: number, cropType: string) {
     // 1. 获取土地 ID (为了加锁)
     // 这里必须先查一次 DB 确认 ID，或者如果前端传了 ID 更好。
@@ -140,7 +140,7 @@ export class GameService {
     const lockKey = getLandLockKey(land.id);
     // 2. 尝试获取分布式锁
     if (!await acquireLock(lockKey)) {
-      throw new Error('操作太频繁，请稍后再试');
+      throw new Error('Operation too frequent, please try again later');
     }
 
     try {
@@ -189,8 +189,21 @@ export class GameService {
       ]);
 
       updateLeaderboard('gold', playerId, updatedPlayer.gold).catch(console.error);
-      
-      // 4. 清除缓存
+
+      // 4. 发送种植事件到队列（Worker 统一广播）
+      const eventData = {
+        type: 'PLANT_EVENT',
+        playerId,
+        playerName: player.name,
+        position,
+        cropType,
+        cropName: crop.name,
+        matureTime: crop.matureTime,
+        timestamp: now.toISOString()
+      };
+      await redisClient.lPush(QUEUE_FARM_EVENTS, JSON.stringify(eventData));
+
+      // 5. 清除缓存
       await invalidatePlayerCache(playerId);
 
       return updatedLand;
@@ -201,7 +214,7 @@ export class GameService {
     }
   }
 
-  // ================= 照料 (加锁 + 防刷 + 通知) =================
+  // ================= 照料 (加锁 + 防刷 + 通知/广播) =================
   static async care(operatorId: string, ownerId: string, position: number, type: 'water' | 'weed' | 'pest') {
     // 先查 landId
     const land = await prisma.land.findUnique({
@@ -222,7 +235,7 @@ export class GameService {
 
       let updateData: any = {};
       const expReward = 10;
-      const careTypeNames = { water: '浇水', weed: '除草', pest: '除虫' };
+      const careTypeNames = { water: 'Watered', weed: 'Removed Weeds', pest: 'Removed Pests' };
 
       if (type === 'water') {
           if (!land.needsWater) throw new Error('No water needed');
@@ -254,21 +267,20 @@ export class GameService {
         updateLeaderboard('level', operatorId, newLevel).catch(console.error);
       }
 
-      // 发送照料通知给土地所有者（如果是帮别人照料）
-      if (operatorId !== ownerId) {
-        const eventData = {
-          type: 'CARE_EVENT',
-          operatorId,
-          operatorName: operator?.name,
-          ownerId,
-          position,
-          careType: type,
-          careTypeName: careTypeNames[type],
-          expReward,
-          timestamp: new Date().toISOString()
-        };
-        await redisClient.lPush(QUEUE_CARE_EVENTS, JSON.stringify(eventData));
-      }
+      // 发送照料事件到队列（Worker 统一处理通知和广播）
+      const eventData = {
+        type: 'CARE_EVENT',
+        operatorId,
+        operatorName: operator?.name,
+        ownerId,
+        position,
+        careType: type,
+        careTypeName: careTypeNames[type],
+        expReward,
+        isSelfOperation: operatorId === ownerId,
+        timestamp: new Date().toISOString()
+      };
+      await redisClient.lPush(QUEUE_FARM_EVENTS, JSON.stringify(eventData));
 
       // 清除缓存 (注意：如果操作的是别人的地，要清两个人的缓存？)
       // owner 的地状态变了 -> 清 owner
@@ -284,7 +296,7 @@ export class GameService {
     }
   }
 
-  // ================= 优化：收获 (加锁 + 原子操作 + 清缓存) =================
+  // ================= 优化：收获 (加锁 + 原子操作 + 清缓存 + 队列广播) =================
   static async harvest(playerId: string, position: number) {
     const land = await prisma.land.findUnique({
       where: { playerId_position: { playerId, position } }
@@ -334,6 +346,9 @@ export class GameService {
           newRemainingHarvests = 0;
       }
 
+      // 获取玩家名字（用于广播）
+      const player = await prisma.player.findUnique({ where: { id: playerId }, select: { name: true } });
+
       // 事务更新
       const [updatedPlayer] = await prisma.$transaction([
         prisma.player.update({
@@ -365,6 +380,23 @@ export class GameService {
           updateLeaderboard('level', playerId, newLevel).catch(console.error);
       }
 
+      // 发送收获事件到队列（Worker 统一广播）
+      const eventData = {
+        type: 'HARVEST_EVENT',
+        playerId,
+        playerName: player?.name,
+        position,
+        cropType: crop.type,
+        cropName: crop.name,
+        gold: netIncome,
+        exp: rewardExp,
+        penalty: penaltyAmount,
+        nextSeason: newRemainingHarvests > 0,
+        isWithered: newRemainingHarvests === 0,
+        timestamp: now.toISOString()
+      };
+      await redisClient.lPush(QUEUE_FARM_EVENTS, JSON.stringify(eventData));
+
       // 清缓存
       await invalidatePlayerCache(playerId);
 
@@ -381,7 +413,7 @@ export class GameService {
     }
   }
 
-  // ================= 铲除 (加锁 + 防刷 + 通知) =================
+  // ================= 铲除 (加锁 + 防刷 + 通知/广播) =================
   static async shovel(operatorId: string, ownerId: string, position: number) {
     const land = await prisma.land.findUnique({
         where: { playerId_position: { playerId: ownerId, position } }
@@ -435,19 +467,18 @@ export class GameService {
             updateLeaderboard('level', operatorId, newLevel).catch(console.error);
         }
 
-        // 发送铲除通知给土地所有者（如果是帮别人铲除）
-        if (operatorId !== ownerId) {
-          const eventData = {
-            type: 'SHOVEL_EVENT',
-            operatorId,
-            operatorName: operator?.name,
-            ownerId,
-            position,
-            expReward,
-            timestamp: now.toISOString()
-          };
-          await redisClient.lPush(QUEUE_SHOVEL_EVENTS, JSON.stringify(eventData));
-        }
+        // 发送铲除事件到队列（Worker 统一处理通知和广播）
+        const eventData = {
+          type: 'SHOVEL_EVENT',
+          operatorId,
+          operatorName: operator?.name,
+          ownerId,
+          position,
+          expReward,
+          isSelfOperation: operatorId === ownerId,
+          timestamp: now.toISOString()
+        };
+        await redisClient.lPush(QUEUE_FARM_EVENTS, JSON.stringify(eventData));
 
         await invalidatePlayerCache(ownerId);
         if (operatorId !== ownerId) await invalidatePlayerCache(operatorId);
@@ -628,10 +659,127 @@ export class GameService {
             dogActiveUntil: newActiveUntil
           }
         });
-        await invalidatePlayerCache(playerId);
+await invalidatePlayerCache(playerId);
         return { success: true, activeUntil: newActiveUntil };
     } finally {
-        await releaseLock(lockKey);
+      await releaseLock(lockKey);
+    }
+  }
+
+  // ==================== 偷菜 ====================
+  static async stealCrop(stealerId: string, victimId: string, position: number) {
+    const targetLand = await prisma.land.findUnique({
+      where: { playerId_position: { playerId: victimId, position } }
+    });
+    if (!targetLand) throw new Error('Land not found');
+
+    const lockKey = getLandLockKey(targetLand.id);
+
+    const hasLock = await acquireLock(lockKey, 3);
+    if (!hasLock) throw new Error('Too busy! Someone is interacting with this land.');
+
+    try {
+      const land = await prisma.land.findUnique({ where: { id: targetLand.id } });
+      if (!land || land.status !== 'harvestable') throw new Error('Too late! Nothing to steal.');
+
+      const victim = await prisma.player.findUnique({
+        where: { id: victimId },
+        select: { name: true, hasDog: true, dogActiveUntil: true, gold: true }
+      });
+
+      const now = new Date();
+      const isDogActive = victim?.hasDog && victim.dogActiveUntil && victim.dogActiveUntil > now;
+
+      if (isDogActive && Math.random() < DOG_CONFIG.BITE_RATE) {
+        const stealer = await prisma.player.findUnique({ where: { id: stealerId } });
+        const penalty = Math.min(stealer?.gold || 0, DOG_CONFIG.PENALTY_GOLD);
+
+        if (penalty > 0) {
+          await prisma.$transaction([
+            prisma.player.update({ where: { id: stealerId }, data: { gold: { decrement: penalty } } }),
+            prisma.player.update({ where: { id: victimId }, data: { gold: { increment: penalty } } })
+          ]);
+        }
+
+        const eventData = {
+            type: 'DOG_BITTEN',
+            stealerId,
+            stealerName: stealer?.name,
+            victimId,
+            victimName: victim?.name,
+            position,
+            penalty,
+            timestamp: now.toISOString()
+        };
+        await redisClient.lPush(QUEUE_FARM_EVENTS, JSON.stringify(eventData));
+
+        await invalidatePlayerCache(stealerId);
+        await invalidatePlayerCache(victimId);
+
+        return {
+          success: false,
+          code: 'DOG_BITTEN',
+          message: `Bitten by ${victim?.name}'s dog! Lost ${penalty} gold`,
+          penalty
+        };
+      }
+
+      if (land.stolenCount >= 3) throw new Error('This crop has been stolen too many times');
+
+      // 每日防刷检查 (Redis)
+      const alreadyStolen = await checkAndMarkStealToday(stealerId, victimId, position);
+      if (alreadyStolen) throw new Error('Already stolen today');
+
+      const crop = CROPS.find(c => c.type === land.cropType);
+      if (!crop) throw new Error('Crop config not found');
+
+      const stealAmount = 1;
+      const goldValue = crop.sellPrice * stealAmount;
+
+      const [updatedLand, updatedStealer] = await prisma.$transaction([
+        prisma.land.update({
+          where: { id: land.id },
+          data: { stolenCount: { increment: 1 } }
+        }),
+        prisma.player.update({
+          where: { id: stealerId },
+          data: { gold: { increment: goldValue } }
+        })
+      ]);
+
+      const stealerName = (await prisma.player.findUnique({where: {id: stealerId}, select: {name:true}}))?.name;
+      const eventData = {
+          type: 'STEAL_SUCCESS',
+          stealerId,
+          stealerName,
+          victimId,
+          victimName: victim?.name,
+          position,
+          cropName: crop.name,
+          cropType: land.cropType,
+          amount: stealAmount,
+          goldValue,
+          timestamp: now.toISOString()
+      };
+      await redisClient.lPush(QUEUE_FARM_EVENTS, JSON.stringify(eventData));
+
+      updateLeaderboard('gold', stealerId, updatedStealer.gold).catch(console.error);
+
+      await invalidatePlayerCache(stealerId);
+      await invalidatePlayerCache(victimId);
+
+      return {
+        success: true,
+        stolen: {
+          cropType: land.cropType,
+          cropName: crop.name,
+          amount: stealAmount,
+          goldValue
+        }
+      };
+
+    } finally {
+      await releaseLock(lockKey);
     }
   }
 }

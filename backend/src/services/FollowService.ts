@@ -6,7 +6,6 @@ import {
   acquireLock,
   releaseLock,
   updateLeaderboard,
-  QUEUE_STEAL_EVENTS,
   QUEUE_SOCIAL_EVENTS,
   invalidatePlayerCache,
   getLandLockKey,
@@ -14,7 +13,7 @@ import {
   KEY_PREFIX_FOLLOWERS,
   checkAndMarkStealToday
 } from '../utils/redis';
-import { GAME_CONFIG, CROPS } from '../config/game-keys';
+import { GAME_CONFIG, CROPS } from '../utils/game-keys';
 
 const DOG_CONFIG = GAME_CONFIG.DOG;
 
@@ -268,129 +267,6 @@ export class FollowService {
     });
 
     return friend;
-  }
-
-  // ==================== 偷菜逻辑 ====================
-  
-  static async stealCrop(stealerId: string, victimId: string, position: number) {
-    if (stealerId === victimId) throw new Error('Cannot steal from yourself');
-
-    const targetLand = await prisma.land.findUnique({
-      where: { playerId_position: { playerId: victimId, position } }
-    });
-    if (!targetLand) throw new Error('Land not found');
-
-    const lockKey = getLandLockKey(targetLand.id);
-
-    const hasLock = await acquireLock(lockKey, 3);
-    if (!hasLock) throw new Error('Too busy! Someone is interacting with this land.');
-
-    try {
-      const land = await prisma.land.findUnique({ where: { id: targetLand.id } });
-      if (!land || land.status !== 'harvestable') throw new Error('Too late! Nothing to steal.');
-
-      const isMutual = await this.checkMutualFollow(stealerId, victimId);
-      if (!isMutual) throw new Error('Not mutual followers');
-
-      const victim = await prisma.player.findUnique({
-        where: { id: victimId },
-        select: { name: true, hasDog: true, dogActiveUntil: true, gold: true }
-      });
-
-      const now = new Date();
-      const isDogActive = victim?.hasDog && victim.dogActiveUntil && victim.dogActiveUntil > now;
-
-      if (isDogActive && Math.random() < DOG_CONFIG.BITE_RATE) {
-        const stealer = await prisma.player.findUnique({ where: { id: stealerId } });
-        const penalty = Math.min(stealer?.gold || 0, DOG_CONFIG.PENALTY_GOLD);
-
-        if (penalty > 0) {
-          await prisma.$transaction([
-            prisma.player.update({ where: { id: stealerId }, data: { gold: { decrement: penalty } } }),
-            prisma.player.update({ where: { id: victimId }, data: { gold: { increment: penalty } } })
-          ]);
-        }
-
-        const eventData = {
-            type: 'DOG_BITTEN',
-            stealerId,
-            stealerName: stealer?.name,
-            victimId,
-            victimName: victim?.name,
-            position,
-            penalty,
-            timestamp: now.toISOString()
-        };
-        await redisClient.lPush(QUEUE_STEAL_EVENTS, JSON.stringify(eventData));
-
-        await invalidatePlayerCache(stealerId);
-        await invalidatePlayerCache(victimId);
-
-        return {
-          success: false,
-          code: 'DOG_BITTEN',
-          message: `被 ${victim?.name} 的狗咬了！损失 ${penalty} 金币`,
-          penalty
-        };
-      }
-      
-      if (land.stolenCount >= 3) throw new Error('This crop has been stolen too many times');
-
-      // 每日防刷检查 (Redis)
-      const alreadyStolen = await checkAndMarkStealToday(stealerId, victimId, position);
-      if (alreadyStolen) throw new Error('Already stolen today');
-
-      const crop = CROPS.find(c => c.type === land.cropType); 
-      if (!crop) throw new Error('Crop config not found');
-
-      const stealAmount = 1;
-      const goldValue = crop.sellPrice * stealAmount;
-
-      const [updatedLand, updatedStealer] = await prisma.$transaction([
-        prisma.land.update({
-          where: { id: land.id },
-          data: { stolenCount: { increment: 1 } }
-        }),
-        prisma.player.update({
-          where: { id: stealerId },
-          data: { gold: { increment: goldValue } }
-        })
-      ]);
-
-      const stealerName = (await prisma.player.findUnique({where: {id: stealerId}, select: {name:true}}))?.name;
-      const eventData = {
-          type: 'STEAL_SUCCESS',
-          stealerId,
-          stealerName,
-          victimId,
-          victimName: victim?.name,
-          position,
-          cropName: crop.name,
-          cropType: land.cropType,
-          amount: stealAmount,
-          goldValue,
-          timestamp: now.toISOString()
-      };
-      await redisClient.lPush(QUEUE_STEAL_EVENTS, JSON.stringify(eventData));
-
-      updateLeaderboard('gold', stealerId, updatedStealer.gold).catch(console.error);
-      
-      await invalidatePlayerCache(stealerId);
-      await invalidatePlayerCache(victimId);
-
-      return {
-        success: true,
-        stolen: {
-          cropType: land.cropType,
-          cropName: crop.name,
-          amount: stealAmount,
-          goldValue
-        }
-      };
-
-    } finally {
-      await releaseLock(lockKey);
-    }
   }
 }
 

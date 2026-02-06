@@ -9,7 +9,7 @@
     "start": "ts-node src/index.ts",
     "start:auth": "ts-node src/auth-server.ts",
     "start:worker": "ts-node src/worker.ts",
-    "build": "tsc", 
+    "build": "tsc",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push"
   },
@@ -24,6 +24,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
+    "bullmq": "^5.67.3",
     "cors": "^2.8.6",
     "dotenv": "^16.5.0",
     "express": "^5.2.1",

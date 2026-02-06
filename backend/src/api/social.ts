@@ -22,7 +22,7 @@ router.post('/follow', authenticateApiKey, async (req: any, res) => {
       action: 'FOLLOW',
       playerId: req.playerId,
       playerName: player?.name,
-      details: `关注了 ${target?.name}${result.isMutual ? ' (互相关注)' : ''}`
+      details: `Followed ${target?.name}${result.isMutual ? ' (Mutual)' : ''}`
     });
 
     res.json(result);
@@ -104,17 +104,6 @@ router.get('/friends/:friendId/farm', authenticateApiKey, async (req: any, res) 
   try {
     const farm = await FollowService.getFriendFarm(req.playerId, req.params.friendId);
     res.json(farm);
-  } catch (error: any) {
-    res.status(400).json({ error: error.message });
-  }
-});
-
-// 偷菜
-router.post('/steal', authenticateApiKey, async (req: any, res) => {
-  const { victimId, position } = req.body;
-  try {
-    const result = await FollowService.stealCrop(req.playerId, victimId, position);
-    res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }

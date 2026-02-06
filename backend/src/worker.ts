@@ -2,7 +2,7 @@
 
 import dotenv from 'dotenv';
 import prisma from './utils/prisma';
-import { redisClient, QUEUE_STEAL_EVENTS, QUEUE_SOCIAL_EVENTS, QUEUE_CARE_EVENTS, QUEUE_SHOVEL_EVENTS } from './utils/redis';
+import { redisClient, QUEUE_SOCIAL_EVENTS, QUEUE_FARM_EVENTS } from './utils/redis';
 import { broadcast } from './utils/websocket';
 
 dotenv.config();
@@ -33,7 +33,7 @@ async function processSocialEvent(event: any) {
       data: {
         playerId: followingId,
         type: 'new_follower',
-        message: `${follower.name} 关注了你！`,
+        message: `${follower.name} followed you!`,
         data: JSON.stringify({ followerId, followerName: follower.name })
       }
     });
@@ -46,8 +46,8 @@ async function processSocialEvent(event: any) {
 
     // 3. 如果是互粉，处理 "好友达成" 通知 (双向)
     if (isMutual) {
-      const mutualMsgA = `你和 ${following.name} 互相关注，现在是好友了！`;
-      const mutualMsgB = `你和 ${follower.name} 互相关注，现在是好友了！`;
+      const mutualMsgA = `You and ${following.name} are now friends!`;
+      const mutualMsgB = `You and ${follower.name} are now friends!`;
 
       // 通知 A (Follower)
       await prisma.notification.create({
@@ -105,7 +105,7 @@ async function processStealEvent(event: any) {
         data: {
           playerId: victimId,
           type: 'stolen',
-          message: `${stealerName} 偷走了你位置 ${position} 的 ${amount} 个 ${cropName}！`,
+          message: `${stealerName} stole your ${cropName} (${amount}) at position ${position}!`,
           data: JSON.stringify({ stealerName, cropName, amount, position })
         }
       });
@@ -116,7 +116,7 @@ async function processStealEvent(event: any) {
         action: 'STEAL',
         playerId: stealerId,
         playerName: stealerName,
-        details: `从 ${victimName} 偷走了 ${cropName}`,
+        details: `Stole ${cropName} from ${victimName}`,
         timestamp: time.toISOString()
       });
 
@@ -130,7 +130,7 @@ async function processStealEvent(event: any) {
         data: {
           playerId: victimId, // 告诉狗主人狗咬到人了
           type: 'dog_bite',
-          message: `你的狗咬住了 ${stealerName}，捡到了 ${penalty} 金币！`,
+          message: `Your dog caught ${stealerName}, you got ${penalty} gold!`,
           data: JSON.stringify({ stealerName, penalty })
         }
       });
@@ -141,7 +141,7 @@ async function processStealEvent(event: any) {
         action: 'STEAL_FAIL',
         playerId: stealerId,
         playerName: stealerName,
-        details: `去 ${victimName} 家偷菜被狗咬了，损失 ${penalty} 金币！`,
+        details: `Bitten by ${victimName}'s dog while stealing! Lost ${penalty} gold`,
         timestamp: time.toISOString()
       });
 
@@ -156,26 +156,28 @@ async function processStealEvent(event: any) {
  * 处理照料事件 (浇水/除草/除虫)
  */
 async function processCareEvent(event: any) {
-  const { operatorId, operatorName, ownerId, position, careType, careTypeName, expReward, timestamp } = event;
+  const { operatorId, operatorName, ownerId, position, careType, careTypeName, expReward, isSelfOperation, timestamp } = event;
   const time = new Date(timestamp);
 
   try {
-    // 获取土地所有者名字
-    const owner = await prisma.player.findUnique({
-      where: { id: ownerId },
-      select: { name: true }
-    });
-    if (!owner) return;
+    // 如果是帮别人照料，发送通知给自己
+    if (!isSelfOperation) {
+      // 获取操作者名字
+      const operator = await prisma.player.findUnique({
+        where: { id: operatorId },
+        select: { name: true }
+      });
+      if (!operator) return;
 
-    // 发送照料通知给土地所有者
-    await prisma.notification.create({
-      data: {
-        playerId: ownerId,
-        type: 'care',
-        message: `${operatorName} 给你的位置 ${position} 浇了水！`,
-        data: JSON.stringify({ operatorId, operatorName, position, careType, expReward })
-      }
-    });
+      await prisma.notification.create({
+        data: {
+          playerId: ownerId,
+          type: 'care',
+          message: `${operatorName} ${careTypeName} your crop at position ${position}!`,
+          data: JSON.stringify({ operatorId, operatorName, position, careType, expReward })
+        }
+      });
+    }
 
     // 广播
     await broadcast({
@@ -183,11 +185,11 @@ async function processCareEvent(event: any) {
       action: 'CARE',
       playerId: operatorId,
       playerName: operatorName,
-      details: `给 ${owner.name} 的土地 ${careTypeName} (+${expReward} 经验)`,
+      details: `${careTypeName} ${isSelfOperation ? 'own crop' : ownerId + "'s land"} (+${expReward} exp)`,
       timestamp: time.toISOString()
     });
 
-    console.log(`[Worker] 💧 Processed CARE: ${operatorName} -> ${owner.name} (${careTypeName})`);
+    console.log(`[Worker] 💧 Processed CARE: ${operatorName} ${isSelfOperation ? '(self)' : '-> ' + ownerId} (${careTypeName})`);
 
   } catch (err) {
     console.error(`[Worker] ❌ Error processing care event:`, err);
@@ -198,26 +200,21 @@ async function processCareEvent(event: any) {
  * 处理铲除枯萎作物事件
  */
 async function processShovelEvent(event: any) {
-  const { operatorId, operatorName, ownerId, position, expReward, timestamp } = event;
+  const { operatorId, operatorName, ownerId, position, expReward, isSelfOperation, timestamp } = event;
   const time = new Date(timestamp);
 
   try {
-    // 获取土地所有者名字
-    const owner = await prisma.player.findUnique({
-      where: { id: ownerId },
-      select: { name: true }
-    });
-    if (!owner) return;
-
-    // 发送铲除通知给土地所有者
-    await prisma.notification.create({
-      data: {
-        playerId: ownerId,
-        type: 'shovel',
-        message: `${operatorName} 帮你铲除了位置 ${position} 的枯萎作物！`,
-        data: JSON.stringify({ operatorId, operatorName, position, expReward })
-      }
-    });
+    // 如果是帮别人铲除，发送通知给土地所有者
+    if (!isSelfOperation) {
+      await prisma.notification.create({
+        data: {
+          playerId: ownerId,
+          type: 'shovel',
+          message: `${operatorName} cleared your withered crop at position ${position}!`,
+          data: JSON.stringify({ operatorId, operatorName, position, expReward })
+        }
+      });
+    }
 
     // 广播
     await broadcast({
@@ -225,14 +222,84 @@ async function processShovelEvent(event: any) {
       action: 'SHOVEL',
       playerId: operatorId,
       playerName: operatorName,
-      details: `帮 ${owner.name} 铲除枯萎作物 (+${expReward} 经验)`,
+      details: `Cleared withered crop ${isSelfOperation ? '(self)' : 'for ' + ownerId} (+${expReward} exp)`,
       timestamp: time.toISOString()
     });
 
-    console.log(`[Worker] 🔧 Processed SHOVEL: ${operatorName} -> ${owner.name}`);
+    console.log(`[Worker] 🔧 Processed SHOVEL: ${operatorName} ${isSelfOperation ? '(self)' : '-> ' + ownerId}`);
 
   } catch (err) {
     console.error(`[Worker] ❌ Error processing shovel event:`, err);
+  }
+}
+
+/**
+ * 处理种植事件
+ */
+async function processPlantEvent(event: any) {
+  const { playerId, playerName, position, cropType, cropName, matureTime, timestamp } = event;
+  const time = new Date(timestamp);
+
+  try {
+    // 广播
+    await broadcast({
+      type: 'action',
+      action: 'PLANT',
+      playerId,
+      playerName,
+      details: `Planted ${cropName} at position [${position}] (${matureTime}s to mature)`,
+      timestamp: time.toISOString()
+    });
+
+    console.log(`[Worker] 🌱 Processed PLANT: ${playerName} -> position ${position} (${cropName})`);
+
+  } catch (err) {
+    console.error(`[Worker] ❌ Error processing plant event:`, err);
+  }
+}
+
+/**
+ * 处理收获事件
+ */
+async function processHarvestEvent(event: any) {
+  const { playerId, playerName, position, cropType, cropName, gold, exp, penalty, nextSeason, isWithered, timestamp } = event;
+  const time = new Date(timestamp);
+
+  try {
+    // 发送通知给自己
+    let message = `Harvested +${gold} gold`;
+    if (penalty > 0) message += ` (lost -${penalty} due to disasters)`;
+    if (nextSeason) message += " (next season)";
+    if (isWithered) message += " (crop withered)";
+
+    // await prisma.notification.create({
+    //   data: {
+    //     playerId,
+    //     type: 'harvest',
+    //     message,
+    //     data: JSON.stringify({ position, cropType, cropName, gold, exp, penalty, nextSeason, isWithered })
+    //   }
+    // });
+
+    // 广播
+    let details = `Harvested +${gold} gold`;
+    if (penalty > 0) details += ` (-${penalty} penalty)`;
+    if (nextSeason) details += " (next season)";
+    if (isWithered) details += " (withered)";
+
+    await broadcast({
+      type: 'action',
+      action: 'HARVEST',
+      playerId,
+      playerName,
+      details,
+      timestamp: time.toISOString()
+    });
+
+    console.log(`[Worker] 🌾 Processed HARVEST: ${playerName} -> ${cropName} (+${gold} gold)`);
+
+  } catch (err) {
+    console.error(`[Worker] ❌ Error processing harvest event:`, err);
   }
 }
 
@@ -245,30 +312,38 @@ async function startWorker() {
     await redisClient.connect();
   }
 
-  console.log('👷 Worker is listening for events (Steal & Social & Care & Shovel)...');
+  console.log('👷 Worker is listening for events (Social & Farm)...');
 
   while (true) {
     try {
-      // 阻塞式拉取，同时监听四个队列
+      // 阻塞式拉取，监听两个队列
       const result = await redisClient.brPop([
-        QUEUE_STEAL_EVENTS,
         QUEUE_SOCIAL_EVENTS,
-        QUEUE_CARE_EVENTS,
-        QUEUE_SHOVEL_EVENTS
+        QUEUE_FARM_EVENTS
       ], 0);
 
       if (result) {
         const { key, element } = result;
         const event = JSON.parse(element);
 
-        if (key === QUEUE_STEAL_EVENTS) {
-          await processStealEvent(event);
-        } else if (key === QUEUE_SOCIAL_EVENTS) {
+        if (key === QUEUE_SOCIAL_EVENTS) {
           await processSocialEvent(event);
-        } else if (key === QUEUE_CARE_EVENTS) {
-          await processCareEvent(event);
-        } else if (key === QUEUE_SHOVEL_EVENTS) {
-          await processShovelEvent(event);
+        } else if (key === QUEUE_FARM_EVENTS) {
+          // 根据事件 type 分发到对应的处理函数
+          const eventType = event.type;
+          if (eventType === 'STEAL_SUCCESS' || eventType === 'DOG_BITTEN') {
+            await processStealEvent(event);
+          } else if (eventType === 'CARE_EVENT') {
+            await processCareEvent(event);
+          } else if (eventType === 'SHOVEL_EVENT') {
+            await processShovelEvent(event);
+          } else if (eventType === 'PLANT_EVENT') {
+            await processPlantEvent(event);
+          } else if (eventType === 'HARVEST_EVENT') {
+            await processHarvestEvent(event);
+          } else {
+            console.log(`[Worker] ⚠️ Unknown farm event type: ${eventType}`);
+          }
         }
       }
     } catch (error) {

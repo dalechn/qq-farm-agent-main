@@ -4,7 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import prisma from './utils/prisma';
-import { GAME_CONFIG } from './config/game-keys';
+import { GAME_CONFIG } from './utils/game-keys';
 
 dotenv.config();
 

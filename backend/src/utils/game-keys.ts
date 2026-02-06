@@ -17,7 +17,7 @@ export const GAME_CONFIG = {
     gold:   { price: 0,      next: '',      levelReq: 999 }
   },
 
-  // 化肥配置 [修改：增加价格]
+  // 化肥配置
   FERTILIZER: {
     normal: { 
       price: 50,           // 50金币
@@ -29,7 +29,7 @@ export const GAME_CONFIG = {
     }
   },
 
-  // [新增] 看守狗配置
+  // 看守狗配置
   DOG: {
     PRICE: 2000,          // 买狗价格
     FOOD_PRICE: 200,      // 狗粮价格
@@ -55,7 +55,7 @@ export const CROPS = [
     sellPrice: 15, 
     matureTime: 30, 
     exp: 2, 
-    yield: 1,
+    yield: 2,         // [修改] 改为2，确保被偷有损失
     maxHarvests: 1, 
     regrowTime: 0,
     requiredLandType: 'normal'
@@ -67,7 +67,7 @@ export const CROPS = [
     sellPrice: 35, 
     matureTime: 60, 
     exp: 5, 
-    yield: 1,
+    yield: 2,         // [修改] 改为2
     maxHarvests: 1, 
     regrowTime: 0,
     requiredLandType: 'normal'
@@ -79,7 +79,7 @@ export const CROPS = [
     sellPrice: 280, 
     matureTime: 600, 
     exp: 40, 
-    yield: 1,
+    yield: 2,         // [修改] 改为2
     maxHarvests: 1, 
     regrowTime: 0,
     requiredLandType: 'normal'
@@ -91,7 +91,7 @@ export const CROPS = [
     sellPrice: 60, 
     matureTime: 120, 
     exp: 10, 
-    yield: 2,
+    yield: 2,         // 保持2
     maxHarvests: 5,   
     regrowTime: 60,
     requiredLandType: 'normal'
@@ -105,7 +105,7 @@ export const CROPS = [
     sellPrice: 100, 
     matureTime: 180, 
     exp: 15, 
-    yield: 2,
+    yield: 2,         // 保持2
     maxHarvests: 3,   
     regrowTime: 90,
     requiredLandType: 'red'
@@ -117,7 +117,7 @@ export const CROPS = [
     sellPrice: 180, 
     matureTime: 240, 
     exp: 20, 
-    yield: 2,
+    yield: 2,         // 保持2
     maxHarvests: 4,   
     regrowTime: 120,
     requiredLandType: 'red'
@@ -129,7 +129,7 @@ export const CROPS = [
     sellPrice: 120, 
     matureTime: 300, 
     exp: 25, 
-    yield: 3,
+    yield: 3,         // 保持3 (高产)
     maxHarvests: 1,   
     regrowTime: 0,
     requiredLandType: 'red'
@@ -143,7 +143,7 @@ export const CROPS = [
     sellPrice: 1200,
     matureTime: 1800, 
     exp: 100,
-    yield: 1,
+    yield: 2,         // [修改] 改为2，黑土地不应该产废料
     maxHarvests: 1,
     regrowTime: 0,
     requiredLandType: 'black'

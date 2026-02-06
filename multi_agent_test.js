@@ -1,9 +1,11 @@
 /**
- * Multi Agent Test - Node.js Version (v3)
+ * Multi Agent Test - Node.js Version (v5 - Balanced Life)
  * * Usage: node multi_agent_test.js
- * * 更新内容：
- * 1. 增加作物等级与金币限制
- * 2. 增加“帮助好友”环节 (除草/浇水/除虫/铲除枯萎)
+ * * 核心逻辑更新：
+ * 1. 必须优先完成自家农场的维护 (Harvest/Plant/Self-Care)。
+ * 2. 社交互动 (Social Interaction) 采用概率分支：
+ * - 40% 概率：变身“偷菜恶霸”，疯狂寻找成熟作物。
+ * - 60% 概率：变身“热心邻居”，帮好友除草/浇水/铲除枯萎。
  */
 
 // ================= 配置区域 =================
@@ -11,16 +13,16 @@ const API_BASE = "http://localhost:3001/api";
 const AUTH_BASE = "http://localhost:3002/api/auth";
 
 const PLAYERS_COUNT = 100; // 机器人数量
-const LOOP_COUNT = 50;    // 每个机器人行动的回合数 (测试回合)
+const LOOP_COUNT = 50;    // 每个机器人行动的回合数
 
-// 模拟的作物配置 (需与后端数据库保持大致一致以确保逻辑正确)
+// 模拟的作物配置 (需与后端一致)
 const CROPS_CONFIG = [
-  { type: "radish",     name: "白萝卜", levelReq: 0,  seedPrice: 125,  landReq: "normal" },
-  { type: "carrot",     name: "胡萝卜", levelReq: 1,  seedPrice: 150,  landReq: "normal" },
-  { type: "corn",       name: "玉米",   levelReq: 3,  seedPrice: 200,  landReq: "normal" },
-  { type: "potato",     name: "土豆",   levelReq: 5,  seedPrice: 250,  landReq: "normal" },
-  { type: "strawberry", name: "草莓",   levelReq: 10, seedPrice: 500,  landReq: "red" },    // 红土地作物
-  { type: "watermelon", name: "西瓜",   levelReq: 20, seedPrice: 1000, landReq: "black" }   // 黑土地作物
+  { type: "radish",     name: "白萝卜", levelReq: 0,  seedPrice: 10,   landReq: "normal" }, // 价格微调对齐game-keys
+  { type: "carrot",     name: "胡萝卜", levelReq: 1,  seedPrice: 20,   landReq: "normal" },
+  { type: "corn",       name: "玉米",   levelReq: 3,  seedPrice: 50,   landReq: "normal" },
+  { type: "potato",     name: "土豆",   levelReq: 5,  seedPrice: 150,  landReq: "normal" },
+  { type: "strawberry", name: "草莓",   levelReq: 10, seedPrice: 80,   landReq: "red" },
+  { type: "watermelon", name: "西瓜",   levelReq: 20, seedPrice: 150,  landReq: "red" }
 ];
 
 // ================= 工具函数 =================
@@ -59,22 +61,15 @@ class FarmAgent {
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, options);
       const isJson = res.headers.get("content-type")?.includes("application/json");
-      
-      if (!res.ok) {
-        // 错误处理：如果是逻辑错误(400/403)通常忽略，系统错误则打印
-        // const text = await res.text();
-        // if (res.status >= 500) console.error(`[${this.name}] Server Error: ${text}`);
-        return null;
-      }
+      if (!res.ok) return null;
       return isJson ? await res.json() : null;
     } catch (e) {
-      console.error(`[${this.name}] Network Error: ${e.message}`);
+      // console.error(`Network Error: ${e.message}`);
       return null;
     }
   }
 
   async register() {
-    // 注册走 AUTH_BASE
     try {
       const res = await fetch(`${AUTH_BASE}/player`, {
         method: 'POST',
@@ -86,12 +81,10 @@ class FarmAgent {
         this.playerId = data.id;
         this.apiKey = data.apiKey;
         this.gold = data.gold;
-        this.log(`注册成功 (ID: ${this.playerId.slice(0, 4)}..)`);
+        this.log(`注册成功`);
         return true;
       }
-    } catch (e) {
-      console.error(`[${this.name}] Register Error: ${e.message}`);
-    }
+    } catch (e) {}
     return false;
   }
 
@@ -110,156 +103,136 @@ class FarmAgent {
     }
   }
 
+  // ================= 核心行动逻辑 =================
   async playTurn(friends) {
     if (!this.apiKey) return;
 
-    // 每次行动前刷新状态
+    // 1. 必须先刷新状态
     await this.refreshState();
 
-    // ================= 1. 自家农场维护 (Self Care) =================
-
-    // [铲除枯萎]
-    for (const land of this.lands) {
-      if (land.status === 'withered') {
-        const res = await this.request('/shovel', 'POST', { position: land.position });
-        if (res && res.success) {
-          this.log(`自家铲除 [位置${land.position}] +${res.exp}EXP`);
-        }
-      }
-    }
-
+    // 2. === 必须先做：自家农场维护 (Self Maintenance) ===
+    // 逻辑：如果不先收菜，被别人偷了就亏了；如果不先种菜，别人没得偷。
+    
     // [收获]
     for (const land of this.lands) {
       if (land.status === "harvestable") {
         const res = await this.request('/harvest', 'POST', { position: land.position });
         if (res && res.success) {
-          let msg = `收获! +${res.reward?.gold || 0}G`;
-          if (res.reward?.nextSeason) msg += " (下季生长中)";
-          if (res.reward?.isWithered) msg += " (已枯萎)";
-          this.log(msg);
+          this.log(`自家收获 +${res.reward?.gold}G`);
         }
       }
     }
 
-    // [照料自己]
+    // [铲除自家枯萎]
     for (const land of this.lands) {
-      if (land.status !== 'planted' && land.status !== 'harvestable') continue;
-      
-      let action = null;
-      if (land.needsWater) action = 'water';
-      else if (land.hasWeeds) action = 'weed';
-      else if (land.hasPests) action = 'pest';
-
-      if (action) {
-        const res = await this.request('/care', 'POST', { position: land.position, type: action });
-        if (res && res.success) {
-          this.log(`自家照料: ${action} [位置${land.position}] +${res.exp}EXP`);
-        }
+      if (land.status === 'withered') {
+        await this.request('/shovel', 'POST', { position: land.position });
       }
     }
 
-    // ================= 2. 帮助好友 (Help Friends) =================
-    // 逻辑：随机拜访几个好友，尝试进行有益操作
-    if (friends && friends.length > 0) {
-      // 随机选 2 个幸运好友
-      const luckyFriends = friends.sort(() => 0.5 - Math.random()).slice(0, 2);
-
-      for (const friend of luckyFriends) {
-        // 由于没有 /visit 接口获取好友土地详情，我们采用“随机盲试”策略
-        // 随机选 1-2 块地尝试操作
-        const tryPositions = [randomInt(0, 5), randomInt(6, 11)]; 
-        
-        for (const pos of tryPositions) {
-            // 随机尝试一种好事：浇水、除草、除虫、铲地
-            const actionType = randomChoice(['water', 'weed', 'pest', 'shovel']);
-
-            if (actionType === 'shovel') {
-                // 尝试帮好友铲地
-                const res = await this.request('/shovel', 'POST', { 
-                    targetId: friend.playerId, 
-                    position: pos 
-                });
-                if (res && res.success) {
-                    this.log(`😇 帮好友 [${friend.name}] 铲除了枯萎作物 +${res.exp}EXP`);
-                }
-            } else {
-                // 尝试帮好友照料
-                const res = await this.request('/care', 'POST', { 
-                    targetId: friend.playerId, 
-                    position: pos, 
-                    type: actionType 
-                });
-                if (res && res.success) {
-                    this.log(`😇 帮好友 [${friend.name}] ${actionType} +${res.exp}EXP`);
-                }
-            }
-            // 无论成功失败，稍微停顿防刷屏
-            await sleep(50);
-        }
-      }
-    }
-
-    // ================= 3. 种植 (Plant with Restrictions) =================
-    
-    // 过滤出空地
-    // 注意：由于上面可能刚铲除，this.lands 数据可能旧了，但在真实脚本中应该再次 refresh 或乐观更新
-    // 这里简单起见，我们假设如果上面铲除了，下一回合再种
+    // [种植]
     const emptyLands = this.lands.filter(l => l.status === "empty");
-
     if (emptyLands.length > 0) {
-      // 1. 筛选当前等级能种的作物
-      const availableCrops = CROPS_CONFIG.filter(c => 
-          c.levelReq <= this.level && 
-          c.seedPrice <= this.gold
-          // 可以在这里加 landReq 判断，假设 landType 都在 lands 数据里
-      );
-
+      const availableCrops = CROPS_CONFIG.filter(c => c.levelReq <= this.level && c.seedPrice <= this.gold);
       if (availableCrops.length > 0) {
-        // 随机选一块空地
         const targetLand = randomChoice(emptyLands);
-        // 随机选一种买得起的作物（稍微偏向买贵的，升级快）
-        const cropToPlant = availableCrops[availableCrops.length - 1]; // 简单策略：选列表里最后一个（通常是等级最高的）
-
+        const cropToPlant = randomChoice(availableCrops); 
         const res = await this.request('/plant', 'POST', { position: targetLand.position, cropType: cropToPlant.type });
         if (res && res.success) {
-          this.gold -= cropToPlant.seedPrice; // 本地扣费防止连续请求透支
-          // this.log(`种植 ${cropToPlant.name} (-${cropToPlant.seedPrice}G)`);
+          this.gold -= cropToPlant.seedPrice;
         }
-      } else {
-          // 没钱了或没解锁
-          if (this.gold < 100) {
-             // this.log("穷得买不起种子了...");
-          }
       }
     }
 
-    // ================= 4. 偷菜 (Steal) =================
-    if (friends && friends.length > 0 && Math.random() < 0.2) {
-      const victim = randomChoice(friends);
-      const stealPos = randomInt(0, 11); // 随机位置盲偷
+    // [自家照料] (优先级略低，放后面也没事)
+    for (const land of this.lands) {
+      if (land.status === 'planted' && (land.needsWater || land.hasWeeds || land.hasPests)) {
+        let action = land.needsWater ? 'water' : (land.hasWeeds ? 'weed' : 'pest');
+        await this.request('/care', 'POST', { position: land.position, type: action });
+      }
+    }
 
-      const res = await this.request('/steal', 'POST', { victimId: victim.playerId, position: stealPos });
-      if (res && res.success) {
-        const stolen = res.stolen || {};
-        this.log(`😈 偷到了! [${victim.name}] 的 ${stolen.cropName || '菜'} x${stolen.amount}`);
+    // 3. === 社交互动 (Social) ===
+    // 60% 做好事，40% 偷菜
+    if (friends && friends.length > 0) {
+      const roll = Math.random(); // 0.0 ~ 1.0
+
+      if (roll < 0.6) {
+        // >>> 40% 概率：偷菜模式 (Steal Mode) <<<
+        await this.doStealRoutine(friends);
+      } else {
+        // >>> 60% 概率：好人模式 (Helper Mode) <<<
+        await this.doHelpRoutine(friends);
+      }
+    }
+  }
+
+  // --- 偷菜子程序 ---
+  async doStealRoutine(friends) {
+    // 随机找 3-5 个“倒霉蛋”
+    const count = Math.min(friends.length, 5);
+    const victims = friends.sort(() => 0.5 - Math.random()).slice(0, count);
+    
+    for (const victim of victims) {
+      // 每个人盲猜 3 个位置
+      const tryPositions = new Set();
+      while(tryPositions.size < 3) tryPositions.add(randomInt(0, 11));
+
+      for (const pos of tryPositions) {
+        const res = await this.request('/steal', 'POST', { victimId: victim.playerId, position: pos });
+        if (res && res.success) {
+          const s = res.stolen;
+          this.log(`😈 偷窃成功! [${victim.name}] 的 ${s.cropName} x${s.amount}`);
+        } else if (res && res.code === 'DOG_BITTEN') {
+          this.log(`🐕 被狗咬! 罚款 ${res.penalty}G`);
+        }
+        await sleep(20);
+      }
+    }
+  }
+
+  // --- 助人子程序 ---
+  async doHelpRoutine(friends) {
+    // 随机找 2-3 个好友送温暖
+    const count = Math.min(friends.length, 3);
+    const luckyFriends = friends.sort(() => 0.5 - Math.random()).slice(0, count);
+
+    for (const friend of luckyFriends) {
+      // 盲猜位置尝试帮忙
+      const tryPositions = [randomInt(0, 5), randomInt(6, 11)];
+      
+      for (const pos of tryPositions) {
+        // 1. 优先尝试铲除枯萎 (经验高)
+        const resShovel = await this.request('/shovel', 'POST', { targetId: friend.playerId, position: pos });
+        if (resShovel && resShovel.success) {
+          this.log(`😇 帮好友 [${friend.name}] 铲除了枯萎作物`);
+          continue; // 铲完了就不用照料了
+        }
+
+        // 2. 尝试随机照料 (浇水/除草/除虫)
+        const action = randomChoice(['water', 'weed', 'pest']);
+        const resCare = await this.request('/care', 'POST', { targetId: friend.playerId, position: pos, type: action });
+        if (resCare && resCare.success) {
+          this.log(`💧 帮好友 [${friend.name}] ${action} 成功`);
+        }
+        await sleep(20);
       }
     }
   }
 }
 
-// ================= 核心逻辑 =================
+// ================= 主流程 =================
 
 async function botWorker(agent, allBots) {
-  // 过滤出好友（自己除外）
   const myFriends = allBots.filter(b => b.playerId !== agent.playerId);
   
-  // 错开启动时间，避免并发拥堵
-  await sleep(randomInt(0, 3000));
+  // 错开启动
+  await sleep(randomInt(0, 2000));
 
   for (let i = 0; i < LOOP_COUNT; i++) {
     await agent.playTurn(myFriends);
-    // 随机休眠 3-6 秒，模拟人类操作频率
-    await sleep(randomInt(3000, 6000));
+    // 随机间隔 2~4 秒
+    await sleep(randomInt(2000, 4000));
   }
 }
 
@@ -268,29 +241,21 @@ async function main() {
   const bots = [];
 
   for (let i = 0; i < PLAYERS_COUNT; i++) {
-    const name = `Agent_${randomInt(1000, 9999)}`;
-    const bot = new FarmAgent(name);
-    
-    if (await bot.register()) {
-      bots.push(bot);
-    }
-    await sleep(50);
+    const bot = new FarmAgent(`Agent_${randomInt(1000, 9999)}`);
+    if (await bot.register()) bots.push(bot);
+    await sleep(10);
   }
 
-  console.log(`=== 2. 建立关系: 全员互粉 (确保可以互助) ===`);
-  // 为了让“帮助好友”逻辑生效，必须互相关注
+  console.log(`=== 2. 建立关系: 全员互粉 ===`);
   for (let i = 0; i < bots.length; i++) {
     for (let j = 0; j < bots.length; j++) {
-      if (i !== j) {
-        await bots[i].follow(bots[j].playerId);
-      }
+      if (i !== j) bots[i].follow(bots[j].playerId).catch(()=>{});
     }
-    if (i % 2 === 0) process.stdout.write("."); // 进度条效果
+    if (i % 20 === 0) process.stdout.write(".");
   }
   console.log("\n关系建立完成！");
 
-  console.log(`=== 3. 开始大乱斗: 模拟真实游玩 ===`);
-  console.log(`包含操作: 种植(限级)、收获、自家照料、[新]帮好友照料/铲地、偷菜`);
+  console.log(`=== 3. 开始大乱斗 (60% 好人 / 40% 恶霸) ===`);
   
   const promises = bots.map(bot => botWorker(bot, bots));
   await Promise.all(promises);
