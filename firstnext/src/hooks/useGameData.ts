@@ -1,5 +1,7 @@
+// src/hooks/useGameData.ts
+
 import { useState, useEffect, useCallback } from 'react';
-import { publicApi, Player, Crop, ActionLog } from '@/lib/api';
+import { publicApi, getMe, Player, Crop, ActionLog } from '@/lib/api';
 import { useWebSocket, WebSocketMessage } from './useWebSocket';
 
 interface UseGameDataOptions {
@@ -13,6 +15,8 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
   const [logs, setLogs] = useState<ActionLog[]>([]);
+  const [myPlayer, setMyPlayer] = useState<Player | null>(null);
+  
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,8 +31,10 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const [hasMoreLogs, setHasMoreLogs] = useState(true);
   const [isFetchingMoreLogs, setIsFetchingMoreLogs] = useState(false);
 
-  // [新增] 更新单个玩家数据到列表中
-  // 用于当 fetch 详情页获得最新数据时，同步更新排行榜列表的状态（如绿点）
+  // ==========================================
+  // [修复] 更新玩家数据
+  // 移除 [myPlayer] 依赖，防止在 FarmDashboard 中引发 useEffect 死循环
+  // ==========================================
   const updatePlayer = useCallback((updatedPlayer: Player) => {
     setPlayers(prev => prev.map(p => {
       if (p.id === updatedPlayer.id) {
@@ -36,7 +42,15 @@ export function useGameData(options: UseGameDataOptions = {}) {
       }
       return p;
     }));
-  }, []);
+    
+    // 使用函数式更新来检查 prevMyPlayer，无需将 myPlayer 加入依赖数组
+    setMyPlayer(prevMyPlayer => {
+        if (prevMyPlayer && prevMyPlayer.id === updatedPlayer.id) {
+            return updatedPlayer;
+        }
+        return prevMyPlayer;
+    });
+  }, []); // 依赖数组为空，函数引用永远稳定
 
   // 获取玩家列表
   const fetchPlayers = useCallback(async (pageNum: number, isLoadMore = false) => {
@@ -112,48 +126,39 @@ export function useGameData(options: UseGameDataOptions = {}) {
     fetchLogs(nextPage, true, playerId);
   }, [logPage, hasMoreLogs, isFetchingMoreLogs, fetchLogs]);
 
-  // 手动刷新日志方法
+  // 获取“我”的信息
+  const fetchMe = useCallback(async () => {
+    if (typeof window !== 'undefined' && localStorage.getItem('player_key')) {
+        try {
+            const me = await getMe();
+            setMyPlayer(me);
+        } catch (e) {
+            console.error("Failed to fetch my info (invalid key?)", e);
+        }
+    }
+  }, []);
+
   const refreshLogs = useCallback(() => {
-    setLogPage(1); // 重置页码
-    fetchLogs(1);  // 重新获取第一页
+    setLogPage(1); 
+    fetchLogs(1);  
   }, [fetchLogs]);
 
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
-      await Promise.all([fetchPlayers(1), fetchCrops(), fetchLogs(1)]);
+      await Promise.all([
+          fetchPlayers(1), 
+          fetchCrops(), 
+          fetchLogs(1),
+          fetchMe() 
+      ]);
       setIsLoading(false);
     };
     init();
-  }, [fetchPlayers, fetchCrops, fetchLogs]);
+  }, [fetchPlayers, fetchCrops, fetchLogs, fetchMe]);
 
-  // WebSocket 消息处理
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     switch (message.type) {
-      case 'action':
-        // [修改] 暂时注释掉 WS 日志监听，保留代码结构
-        /*
-        setLogs((prev) => {
-          const msgId = (message as any).id;
-          if (msgId && prev.some(l => l.id === msgId)) {
-             return prev; 
-          }
-
-          return [
-            {
-              id: msgId, 
-              type: message.type,
-              action: message.action,
-              playerId: message.playerId,
-              playerName: message.playerName,
-              details: message.details,
-              timestamp: message.timestamp,
-            },
-            ...prev, 
-          ];
-        });
-        */
-        break;
       case 'player_joined':
          setTotalPlayersCount(prev => prev + 1);
          break;
@@ -169,8 +174,6 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const stats = {
     totalPlayers: totalPlayersCount, 
     loadedCount: players.length,
-    // totalGold: players.reduce((sum, p) => sum + p.gold, 0),
-    // totalExp: players.reduce((sum, p) => sum + p.exp, 0),
     harvestableCount: players.reduce(
       (sum, p) => sum + p.lands.filter((l) => l.status === 'harvestable').length,
       0
@@ -179,6 +182,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
 
   return {
     players,
+    myPlayer,
     crops,
     logs,
     stats,
@@ -193,7 +197,8 @@ export function useGameData(options: UseGameDataOptions = {}) {
     loadMoreLogs,
     refreshLogs, 
     
-    updatePlayer, // [新增] 导出该方法
+    updatePlayer, 
+    fetchMe,
 
     error,
     isConnected,
@@ -202,6 +207,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
       setLogPage(1); 
       fetchPlayers(1); 
       fetchLogs(1); 
+      fetchMe();
     },
   };
 }

@@ -38,7 +38,7 @@ export interface Land {
   id: number;
   position: number;
   status: 'empty' | 'planted' | 'harvestable' | 'withered';
-  landType: 'normal' | 'red' | 'black' | 'gold'; 
+  landType: 'normal' | 'red' | 'black' | 'gold';
   cropType: string | null;
   plantedAt: string | null;
   matureAt: string | null;
@@ -77,7 +77,7 @@ export interface Crop {
   matureTime: number;
   exp: number;
   yield: number;
-  requiredLandType?: string; 
+  requiredLandType?: string;
   maxHarvests: number;
   regrowTime: number;
 }
@@ -169,39 +169,56 @@ export const harvest = async (position: number) => {
   });
 };
 
-export const careLand = async (position: number, type: 'water' | 'weed' | 'pest') => {
+export const careLand = async (position: number, type: 'water' | 'weed' | 'pest', targetId?: string) => {
   return request<{ success: boolean; exp: number }>('/care', {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ position, type }),
+    body: JSON.stringify({ position, type, targetId }),
   });
 };
 
-export const shovelLand = async (position: number) => {
+// [新增] 偷菜 API (以前只在 AgentApi 里)
+export const steal = async (victimId: string, position: number) => {
+  return request<{
+    success: boolean;
+    stolen: { cropType: string; cropName: string; amount: number; goldValue: number };
+    reason?: string;
+    penalty?: number;
+  }>('/steal', {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ victimId, position }),
+  });
+};
+
+export const shovelLand = async (position: number, targetId?: string) => {
   return request<{ success: boolean; exp: number }>('/shovel', {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ position }),
+    body: JSON.stringify({ position, targetId }),
   });
 };
 
+// [修复] 路径: /land/expand -> /expand
 export const expandLand = async () => {
-  return request<{ success: boolean; newPosition: number; cost: number }>('/land/expand', {
+  return request<{ success: boolean; newPosition: number; cost: number }>('/expand', {
     method: 'POST',
     headers: getAuthHeaders(),
   });
 };
 
+// [修复] 路径: /land/upgrade -> /upgrade-land
 export const upgradeLand = async (position: number) => {
-  return request<{ success: boolean }>('/land/upgrade', {
+  return request<{ success: boolean }>('/upgrade-land', {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({ position }),
   });
 };
 
+// [修复] 路径: /item/fertilizer -> /fertilize
 export const useFertilizer = async (position: number, type: 'normal' | 'high') => {
-  return request<{ success: boolean; newMatureAt: string }>('/item/fertilizer', {
+  return request<{ success: boolean; newMatureAt: string }>('/fertilize', {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({ position, type }),
@@ -237,17 +254,24 @@ export const getFollowers = async (userId: string, page = 1, limit = 20) => {
 
 // ==================== 公开/系统 API ====================
 
+// [新增] 获取当前登录用户信息 (用于判断是否是主人)
+export const getMe = async () => {
+  return request<Player>('/me', {
+    headers: getAuthHeaders(),
+  });
+};
+
 export const publicApi = {
   getPlayerByName: (name: string) =>
     request<Player>(`/users/${encodeURIComponent(name)}`),
 
-  getPlayers: (page = 1, limit = 20) => 
+  getPlayers: (page = 1, limit = 20) =>
     request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
 
-  getLogs: (playerId?: string, page = 1, limit = 50) => 
+  getLogs: (playerId?: string, page = 1, limit = 50) =>
     request<PaginatedLogs>(
-      playerId 
-        ? `/logs?playerId=${playerId}&page=${page}&limit=${limit}` 
+      playerId
+        ? `/logs?playerId=${playerId}&page=${page}&limit=${limit}`
         : `/logs?page=${page}&limit=${limit}`
     ),
 
@@ -303,7 +327,7 @@ export function createAgentApi(apiKey: string) {
       request<PaginatedFollows>(`/following?page=${page}&limit=${limit}`, { headers }),
     getFollowers: (page = 1, limit = 20) =>
       request<PaginatedFollows>(`/followers?page=${page}&limit=${limit}`, { headers }),
-    
+
     getFriends: () => request<FollowUser[]>('/friends', { headers }),
     getFriendFarm: (friendId: string) =>
       request<Player>(`/friends/${friendId}/farm`, { headers }),
@@ -316,7 +340,5 @@ export function createAgentApi(apiKey: string) {
         headers,
         body: JSON.stringify({ victimId, position }),
       }),
-    // getStealHistory: (type: 'stolen' | 'stealer' = 'stealer') =>
-    //   request<StealRecord[]>(`/steal/history?type=${type}`, { headers }),
   };
 }

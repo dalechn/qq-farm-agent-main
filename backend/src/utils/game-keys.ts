@@ -1,13 +1,50 @@
-// backend/src/config/game-keys.ts
+// backend/src/utils/game-keys.ts
+
+// 土地状态枚举
+export enum LandStatus {
+  EMPTY = 'empty',             // 空地
+  PLANTED = 'planted',         // 生长中
+  HARVESTABLE = 'harvestable', // 可收获
+  WITHERED = 'withered'        // 已枯萎 (需要铲除)
+}
+
+// [新增] 升级经验表 (索引0 = 1级升2级所需经验, 索引1 = 2级升3级...)
+// 这里的数值是"当前等级升级到下一级所需的增量经验"
+const LEVEL_UP_EXP = [
+  100,   // Lv1 -> Lv2
+  200,   // Lv2 -> Lv3
+  400,   // Lv3 -> Lv4
+  800,   // Lv4 -> Lv5
+  1500,  // Lv5 -> Lv6
+  2500,  // Lv6 -> Lv7
+  4000,  // Lv7 -> Lv8
+  6000,  // Lv8 -> Lv9
+  9000,  // Lv9 -> Lv10
+  // Lv10+ (每级递增 3000-5000)
+  13000, 18000, 24000, 31000, 39000, 48000, 58000, 69000, 81000, 94000, 108000,
+  // Lv20+
+  125000, 145000, 170000, 200000, 240000, 290000, 350000, 420000, 500000, 600000,
+  // 30+ 级以后可以是极其巨大的数字，防止轻易满级
+  999999999
+];
 
 export const GAME_CONFIG = {
+  // 导出经验表供 Lua 使用
+  LEVEL_UP_EXP, 
+
   LAND: {
-    INITIAL_COUNT: 6,      // 初始土地数量
-    MAX_LIMIT: 18,         // 最大土地数
-    EXPAND_BASE_COST: 1000 // 扩建基础价格
+    INITIAL_COUNT: 6,
+    MAX_LIMIT: 18,
+    EXPAND_BASE_COST: 1000
   },
   
-  // 土地等级与升级配置
+  // 经验倍率配置
+  EXP_RATES: {
+    PLANT: 10,  
+    SHOVEL: 5,  
+    CARE: 10,   
+  },
+
   LAND_LEVELS: ['normal', 'red', 'black', 'gold'] as const,
 
   LAND_UPGRADE: {
@@ -17,58 +54,49 @@ export const GAME_CONFIG = {
     gold:   { price: 0,      next: '',      levelReq: 999 }
   },
 
-  // 化肥配置
   FERTILIZER: {
-    normal: { 
-      price: 50,           // 50金币
-      reduceSeconds: 3600  // 减1小时
-    },
-    high: { 
-      price: 200,          // 200金币
-      reduceSeconds: 14400 // 减4小时
-    }
+    normal: { price: 50, reduceSeconds: 3600 },
+    high: { price: 200, reduceSeconds: 14400 }
   },
 
   // 看守狗配置
   DOG: {
     PRICE: 2000,          // 买狗价格
     FOOD_PRICE: 200,      // 狗粮价格
-    FOOD_DURATION: 86400, // 一份狗粮管24小时 (秒)
-    BITE_RATE: 0.3,       // 咬人概率 (30%)
-    PENALTY_GOLD: 300     // 咬住后罚款金额
+    FOOD_DURATION: 86400, // 持续时间(秒)
+    CATCH_RATE: 40,       // 咬人几率 (40%)
+    BITE_PENALTY: 200     // 被咬罚款 (200金币)
   },
-
-  // 灾害概率
+  
   BASE_RATES: {
-    WEED: 1,
-    PEST: 1,
-    WATER: 1
+    STEAL_PENALTY: 0.1,  // 被偷一次扣10%
+    HEALTH_PENALTY: 0.2  // 有害虫/杂草扣20%
   }
 };
 
 export const CROPS = [
-  // [Normal Land]
-  { 
-    type: 'radish', 
-    name: 'Radish', 
-    seedPrice: 10, 
-    sellPrice: 15, 
-    matureTime: 30, 
-    exp: 2, 
-    yield: 2,         // [修改] 改为2，确保被偷有损失
-    maxHarvests: 1, 
-    regrowTime: 0,
-    requiredLandType: 'normal'
-  },
+    // [Normal Land]
+    { 
+      type: 'radish', 
+      name: 'Radish', 
+      seedPrice: 10, 
+      sellPrice: 15, 
+      matureTime: 30, 
+      exp: 2, 
+      yield: 1,        
+      maxHarvests: 1, 
+      regrowTime: 0,
+      requiredLandType: 'normal'
+    },
   { 
     type: 'carrot', 
     name: 'Carrot', 
-    seedPrice: 20, 
-    sellPrice: 35, 
+    seedPrice: 10, 
+    sellPrice: 25, 
     matureTime: 60, 
-    exp: 5, 
-    yield: 2,         // [修改] 改为2
-    maxHarvests: 1, 
+    yield: 1,        
+    exp: 5,
+    maxHarvests: 1,
     regrowTime: 0,
     requiredLandType: 'normal'
   },
@@ -79,7 +107,7 @@ export const CROPS = [
     sellPrice: 280, 
     matureTime: 600, 
     exp: 40, 
-    yield: 2,         // [修改] 改为2
+    yield: 2,
     maxHarvests: 1, 
     regrowTime: 0,
     requiredLandType: 'normal'
@@ -91,12 +119,11 @@ export const CROPS = [
     sellPrice: 60, 
     matureTime: 120, 
     exp: 10, 
-    yield: 2,         // 保持2
+    yield: 2,
     maxHarvests: 5,   
     regrowTime: 60,
     requiredLandType: 'normal'
   },
-
   // [Red Land]
   { 
     type: 'strawberry', 
@@ -105,7 +132,7 @@ export const CROPS = [
     sellPrice: 100, 
     matureTime: 180, 
     exp: 15, 
-    yield: 2,         // 保持2
+    yield: 2,
     maxHarvests: 3,   
     regrowTime: 90,
     requiredLandType: 'red'
@@ -115,10 +142,10 @@ export const CROPS = [
     name: 'Tomato', 
     seedPrice: 200, 
     sellPrice: 180, 
-    matureTime: 240, 
-    exp: 20, 
-    yield: 2,         // 保持2
-    maxHarvests: 4,   
+    matureTime: 300, 
+    exp: 25, 
+    yield: 3,
+    maxHarvests: 4,
     regrowTime: 120,
     requiredLandType: 'red'
   },
@@ -129,23 +156,35 @@ export const CROPS = [
     sellPrice: 120, 
     matureTime: 300, 
     exp: 25, 
-    yield: 3,         // 保持3 (高产)
+    yield: 3,
     maxHarvests: 1,   
     regrowTime: 0,
     requiredLandType: 'red'
   },
-
   // [Black Land]
-  {
-    type: 'pumpkin', 
-    name: 'Pumpkin',
-    seedPrice: 500,
-    sellPrice: 1200,
+  { 
+    type: 'rose', 
+    name: 'Rose', 
+    seedPrice: 500, 
+    sellPrice: 1200, 
     matureTime: 1800, 
-    exp: 100,
-    yield: 2,         // [修改] 改为2，黑土地不应该产废料
-    maxHarvests: 1,
+    exp: 100, 
+    yield: 1,
+    maxHarvests: 1, 
     regrowTime: 0,
     requiredLandType: 'black'
+  },
+  // [Gold Land]
+  { 
+    type: 'ginseng', 
+    name: 'Ginseng', 
+    seedPrice: 5000, 
+    sellPrice: 20000, 
+    matureTime: 43200,
+    exp: 1000, 
+    yield: 1,
+    maxHarvests: 1, 
+    regrowTime: 0,
+    requiredLandType: 'gold'
   }
 ];

@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { GameService } from '../services/GameService';
 import { authenticateApiKey } from '../middleware/auth';
 import { CROPS } from '../utils/game-keys';
-import { redisClient, KEYS } from '../utils/redis'; // 引入 Redis 客户端直接取 Name
+import { redisClient, KEYS } from '../utils/redis';
 import prisma from '../utils/prisma';
 
 const router: Router = Router();
@@ -14,11 +14,21 @@ const router: Router = Router();
 // ==========================================
 
 // 获取当前玩家状态
-// 完全走 Redis，不查 DB，不查 Count
 router.get('/me', authenticateApiKey, async (req: any, res) => {
   try {
-    const state = await GameService.getPlayerState(req.playerId);
-    res.json(state);
+    const player = await GameService.getPlayerState(req.playerId);
+
+    // 补充 DB 数据
+    const counts = await prisma.player.findUnique({
+      where: { id: req.playerId },
+      select: { _count: { select: { followers: true, following: true } } }
+    });
+
+    if (counts) {
+      (player as any)._count = counts._count;
+    }
+
+    res.json(player); // player 已经包含了 lands 和 gold
   } catch (error: any) {
     console.error('Get me error:', error);
     res.status(500).json({ error: error.message });
@@ -26,13 +36,10 @@ router.get('/me', authenticateApiKey, async (req: any, res) => {
 });
 
 // 查看他人主页
-// 仅保留 Name -> ID 的必要 DB 查询 (因为 Redis 没有 Name 索引)
-// 获取到 ID 后，数据全部从 Redis 读取
 router.get('/users/:name', async (req, res) => {
   try {
     const name = decodeURIComponent(req.params.name);
-    
-    // 1. 极简 DB 查询：只拿 ID
+
     const user = await prisma.player.findFirst({
       where: { name: name },
       select: { id: true }
@@ -40,12 +47,21 @@ router.get('/users/:name', async (req, res) => {
 
     if (!user) {
       res.status(404).json({ error: 'Player not found' });
-      return; 
+      return;
     }
 
-    // 2. 从 Redis 获取热数据 (含 id, name, gold, lands...)
-    const playerState = await GameService.getPlayerState(user.id);
-    res.json(playerState);
+    const player = await GameService.getPlayerState(user.id);
+
+    const counts = await prisma.player.findUnique({
+      where: { id: user.id },
+      select: { _count: { select: { followers: true, following: true } } }
+    });
+
+    if (counts) {
+      (player as any)._count = counts._count;
+    }
+
+    res.json(player);
 
   } catch (error) {
     console.error('Get user error:', error);
@@ -54,14 +70,12 @@ router.get('/users/:name', async (req, res) => {
 });
 
 // 排行榜
-// DB 负责排序 ID -> Redis 负责提供数据
 router.get('/players', async (req, res) => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
   const skip = (page - 1) * limit;
 
   try {
-    // 1. 从 DB 获取排序后的 ID 列表 (只查 ID，速度快)
     const [usersFromDb, total] = await prisma.$transaction([
       prisma.player.findMany({
         select: { id: true },
@@ -72,14 +86,13 @@ router.get('/players', async (req, res) => {
       prisma.player.count()
     ]);
 
-    // 2. 并发从 Redis 拉取这些玩家的实时数据
-    // 这样保证了前端看到的金币/经验是 Redis 里的最新值
     const playersData = await Promise.all(
       usersFromDb.map(async (u) => {
         try {
-          // 只取 player 基础信息，不需要 lands 详情
-          const state = await GameService.getPlayerState(u.id);
-          return state.player; 
+          const player = await GameService.getPlayerState(u.id);
+          // 排行榜列表不需要地块详情，可以剔除以减小体积（可选）
+          // const { lands, ...info } = player; return info;
+          return player;
         } catch (e) {
           return null;
         }
@@ -123,9 +136,8 @@ async function getPlayerNameFromRedis(playerId: string): Promise<string> {
 router.post('/plant', authenticateApiKey, async (req: any, res) => {
   const { position, cropType } = req.body;
   try {
-    // 直接从 Redis 拿名字，不再查库
     const playerName = await getPlayerNameFromRedis(req.playerId);
-    
+
     const result = await GameService.plant(
       req.playerId,
       playerName,
@@ -178,9 +190,11 @@ router.post('/care', authenticateApiKey, async (req: any, res) => {
 
 // 铲除
 router.post('/shovel', authenticateApiKey, async (req: any, res) => {
-  const { position } = req.body;
+  const { position, targetId } = req.body;
   try {
-    const result = await GameService.shovel(req.playerId, position);
+    // If targetId is provided, shovel that player's land. Otherwise shovel own land.
+    const ownerId = targetId || req.playerId;
+    const result = await GameService.shovel(req.playerId, ownerId, position);
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
@@ -210,7 +224,7 @@ router.post('/expand', authenticateApiKey, async (req: any, res) => {
 
 // 施肥
 router.post('/fertilize', authenticateApiKey, async (req: any, res) => {
-  const { position, type } = req.body; 
+  const { position, type } = req.body;
   try {
     const result = await GameService.useFertilizer(req.playerId, position, type);
     res.json(result);

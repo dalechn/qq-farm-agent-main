@@ -1,9 +1,8 @@
 // src/components/LandTile.tsx
 
 import { useEffect, useState } from "react";
-// [修改] 引入 Zap 和 Lock 图标
-import { Skull, Droplets, Bug, Sprout, Shovel, Zap, Lock } from "lucide-react";
-import { Land, plant, harvest, careLand, shovelLand, useFertilizer } from "../lib/api";
+import { Hand, Skull, Droplets, Bug, Sprout, Shovel, Zap, Lock } from "lucide-react";
+import { Land, plant, harvest, careLand, shovelLand, useFertilizer, steal } from "../lib/api";
 
 // ==========================================
 // 1. 像素风 SVG 图标组件库
@@ -135,19 +134,24 @@ const CROP_CONFIG: Record<string, { color: string; name: string }> = {
 };
 
 interface LandProps {
-  land?: Land;   // [修改] 设为可选，因为锁定的土地没有数据
-  locked?: boolean; // [新增] 锁定状态标志
+  land?: Land;
+  locked?: boolean;
   selectedCrop?: string | null;
   onUpdate?: () => void;
+  isOwner?: boolean; // [新增]
+  ownerId?: string;  // [新增]
 }
 
-export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
+export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false, ownerId }: LandProps) {
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
-  
+
+  // [修复] 兼容后端可能返回的 cropId 或 cropType
+  // @ts-ignore
+  const currentCropId = land?.cropId || land?.cropType;
+
   // 1. 计算生长进度
   useEffect(() => {
-    // [修改] 增加判空，如果是锁定土地则不执行逻辑
     if (!land) return;
 
     if (land.status === 'planted' && land.matureAt) {
@@ -156,31 +160,30 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
         const matureTime = new Date(land.matureAt!).getTime();
         const plantedTime = new Date(land.plantedAt!).getTime();
         const totalDuration = matureTime - plantedTime;
-        
+
         if (totalDuration <= 0) {
-            setProgress(100);
-            return;
+          setProgress(100);
+          return;
         }
 
         const elapsed = now - plantedTime;
         const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
         setProgress(pct);
       };
-      
+
       updateProgress();
       const interval = setInterval(updateProgress, 1000);
       return () => clearInterval(interval);
     } else if (land.status === 'harvestable') {
-        setProgress(100);
+      setProgress(100);
     } else {
-        setProgress(0);
+      setProgress(0);
     }
   }, [land]);
 
-  // [新增] 处理锁定状态的渲染
   if (locked) {
     return (
-      <div 
+      <div
         className="
           aspect-square relative 
           border-2 border-dashed border-stone-800/50 
@@ -194,71 +197,96 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
     );
   }
 
-  // 安全检查：如果未锁定但也没有土地数据，不渲染
   if (!land) return null;
 
   const isMature = land.status === 'harvestable' || (land.status === 'planted' && progress >= 100);
 
   // 2. 交互处理
   const handleClick = async () => {
-    // if (loading) return;
+    if (loading) return;
 
-    // try {
-    //   setLoading(true);
-    //   if (land.status === 'empty' && selectedCrop) {
-    //     await plant(land.position, selectedCrop);
-    //     onUpdate?.();
-    //   } else if (land.status === 'harvestable' || isMature) {
-    //     await harvest(land.position);
-    //     onUpdate?.();
-    //   } else if (land.status === 'withered') {
-    //     await shovelLand(land.position);
-    //     onUpdate?.();
-    //   }
-    // } catch (error) {
-    //   console.error('Action failed:', error);
-    // } finally {
-    //   setLoading(false);
-    // }
+    try {
+      setLoading(true);
+
+      // --- 主人模式 ---
+      if (isOwner) {
+        if (land.status === 'empty' && selectedCrop) {
+          await plant(land.position, selectedCrop);
+          onUpdate?.();
+        } else if (land.status === 'harvestable' || isMature) {
+          await harvest(land.position);
+          onUpdate?.();
+        } else if (land.status === 'withered') {
+          await shovelLand(land.position);
+          onUpdate?.();
+        }
+      }
+      // --- 访客模式 (偷菜) ---
+      else if (ownerId) {
+        if (land.status === 'harvestable' || isMature) {
+          // 偷菜
+          const res = await steal(ownerId, land.position);
+          if (res.success) {
+            alert(`Stole ${res.stolen.amount} ${res.stolen.cropName}!`);
+            onUpdate?.();
+          } else if (res.penalty) {
+            alert(`Bitten by dog! Lost ${res.penalty} gold.`);
+            onUpdate?.();
+          } else {
+            alert(res.reason || 'Failed to steal');
+          }
+        } else {
+          // 访客点击其他状态不做操作 (防止误把自己的种子种别人地里)
+          console.log("Visitor action restricted");
+        }
+      }
+
+    } catch (error) {
+      console.error('Action failed:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleCare = async (e: React.MouseEvent, type: 'water' | 'weed' | 'pest') => {
-    // e.stopPropagation(); 
-    // if (loading) return;
-    // try {
-    //   setLoading(true);
-    //   await careLand(land.position, type);
-    //   onUpdate?.();
-    // } catch (error) {
-    //   console.error('Care failed:', error);
-    // } finally {
-    //   setLoading(false);
-    // }
-  };
-
-  const handleShovel = async (e: React.MouseEvent) => {
-    // e.stopPropagation();
-    // if (loading) return;
-    // try {
-    //   setLoading(true);
-    //   await shovelLand(land.position);
-    //   onUpdate?.();
-    // } catch (error) {
-    //   console.error('Shovel failed:', error);
-    // } finally {
-    //   setLoading(false);
-    // }
-  };
-
-  // [新增] 施肥操作
-  const handleFertilize = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (loading) return;
     try {
       setLoading(true);
-      // 默认使用普通化肥 'normal'
-      await useFertilizer(land.position, 'normal');
+      // 如果不是主人，传入 targetId (ownerId)
+      await careLand(land.position, type, isOwner ? undefined : ownerId);
       onUpdate?.();
+    } catch (error) {
+      console.error('Care failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleShovel = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    // if (!isOwner) return; // 移除: 允许访客铲除
+    if (loading) return;
+    try {
+      setLoading(true);
+      // 如果是访客，传入 targetId (ownerId)
+      await shovelLand(land.position, isOwner ? undefined : ownerId);
+      onUpdate?.(); // 铲除成功 -> 刷新
+    } catch (error) {
+      console.error('Shovel failed:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFertilize = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isOwner) return; // 访客不可施肥
+    if (loading) return;
+    try {
+      setLoading(true);
+      await useFertilizer(land.position, 'normal');
+      onUpdate?.(); // 施肥成功 -> 刷新
     } catch (error) {
       console.error('Fertilizer failed:', error);
       alert('Fertilizer failed: No inventory');
@@ -269,66 +297,69 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
 
   // 3. 渲染图标
   const renderCropIcon = () => {
+    // 枯萎状态
     if (land.status === 'withered') {
-      const Icon = land.cropType ? CROP_COMPONENTS[land.cropType] : IconSprout;
+      const Icon = currentCropId ? CROP_COMPONENTS[currentCropId] : IconSprout;
       return (
         <div className="grayscale opacity-60">
-           {Icon && <Icon />}
+          {Icon && <Icon />}
         </div>
       );
     }
 
+    // 成熟状态
     if (isMature) {
-      const Icon = land.cropType ? CROP_COMPONENTS[land.cropType] : IconRadish;
+      const Icon = currentCropId ? CROP_COMPONENTS[currentCropId] : IconRadish;
       return Icon ? <Icon /> : null;
     }
-    
+
+    // 生长中
     if (progress < 30) return <IconSprout />;
     if (progress < 80) return <IconGrowing />;
-    
-    const Icon = land.cropType ? CROP_COMPONENTS[land.cropType] : IconRadish;
+
+    // 接近成熟 (显示原图但小一点或正常)
+    const Icon = currentCropId ? CROP_COMPONENTS[currentCropId] : IconRadish;
     return Icon ? <Icon /> : null;
   };
 
-  // 4. 动态样式 (关键修改：支持红/黑/金土地)
+  // 4. 动态样式
   const getLandStyle = () => {
-    // A. 枯萎状态 (优先级最高)
     if (land.status === 'withered') {
-      return "bg-stone-600 border-stone-800 opacity-100"; 
+      return "bg-stone-600 border-stone-800 opacity-100";
     }
 
-    // B. 成熟状态 (金色光晕)
     if (isMature) {
-      return "bg-[#3f2e21] border-[#fbbf24] shadow-[0_0_15px_rgba(251,191,36,0.4)] z-10 scale-[1.02]";
+      // 偷菜模式下，高亮显示可偷
+      const borderClass = !isOwner ? "border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.6)]" : "border-[#fbbf24] shadow-[0_0_15px_rgba(251,191,36,0.4)]";
+      return `bg-[#3f2e21] ${borderClass} z-10 scale-[1.02]`;
     }
 
-    // C. 基础土地样式配置
     let styles = {
-      bgEmpty: "bg-[#382e2c]",   // 普通: 灰褐
-      bgPlanted: "bg-[#271c19]", // 普通: 深褐
+      bgEmpty: "bg-[#382e2c]",
+      bgPlanted: "bg-[#271c19]",
       border: "border-[#443632]"
     };
 
     switch (land.landType) {
-      case 'red': // 红土地
+      case 'red':
         styles = {
-          bgEmpty: "bg-[#7f1d1d]",   // 鲜红褐
-          bgPlanted: "bg-[#450a0a]", // 深红黑
+          bgEmpty: "bg-[#7f1d1d]",
+          bgPlanted: "bg-[#450a0a]",
           border: "border-[#991b1b]"
         };
         break;
-      case 'black': // 黑土地
+      case 'black':
         styles = {
-          bgEmpty: "bg-[#292524]",   // 深灰
-          bgPlanted: "bg-[#0a0a0a]", // 纯黑
-          border: "border-[#57534e]" // 灰边
+          bgEmpty: "bg-[#292524]",
+          bgPlanted: "bg-[#0a0a0a]",
+          border: "border-[#57534e]"
         };
         break;
-      case 'gold': // 金土地
+      case 'gold':
         styles = {
-          bgEmpty: "bg-[#a16207]",   // 金黄褐
-          bgPlanted: "bg-[#422006]", // 深金褐
-          border: "border-[#facc15] shadow-[inset_0_0_10px_rgba(250,204,21,0.3)]" // 亮金边+内发光
+          bgEmpty: "bg-[#a16207]",
+          bgPlanted: "bg-[#422006]",
+          border: "border-[#facc15] shadow-[inset_0_0_10px_rgba(250,204,21,0.3)]"
         };
         break;
       case 'normal':
@@ -336,134 +367,124 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
         break;
     }
 
-    // D. 根据当前状态应用样式
     if (land.status === 'planted') {
-      // 种植中
       return `${styles.bgPlanted} ${styles.border}`;
     } else {
-      // 空闲
       const baseClasses = `${styles.bgEmpty} ${styles.border}`;
-      if (selectedCrop) {
+      if (selectedCrop && isOwner) { // 仅主人选种时高亮
         return `${baseClasses} opacity-100 ring-2 ring-green-500/50 cursor-pointer`;
       } else {
-        return `${baseClasses} opacity-90 hover:opacity-100 hover:brightness-110 transition-all`;
+        // 简化: 访客看空地不显示 hover 效果
+        return `${baseClasses} ${isOwner ? 'opacity-90 hover:opacity-100 hover:brightness-110 transition-all' : 'opacity-90'}`;
       }
     }
   };
 
-  const cropName = land.cropType ? CROP_CONFIG[land.cropType]?.name : '';
+  const cropName = currentCropId ? CROP_CONFIG[currentCropId]?.name : '';
+
+  // 辅助渲染: 操作按钮覆盖层
+  const renderActions = () => {
+    // 访客不能操作施肥等，只有照料
+    return (
+      <div className="absolute inset-0 flex items-center justify-center gap-1 z-30">
+        {land.needsWater && (
+          <button onClick={(e) => handleCare(e, 'water')} className="bg-blue-500 hover:bg-blue-600 p-1 rounded-full shadow-lg animate-pulse" title="Water">
+            <Droplets className="w-3 h-3 text-white" />
+          </button>
+        )}
+        {land.hasWeeds && (
+          <button onClick={(e) => handleCare(e, 'weed')} className="bg-green-600 hover:bg-green-700 p-1 rounded-full shadow-lg animate-pulse" title="Weed">
+            <Sprout className="w-3 h-3 text-white" />
+          </button>
+        )}
+        {land.hasPests && (
+          <button onClick={(e) => handleCare(e, 'pest')} className="bg-red-500 hover:bg-red-600 p-1 rounded-full shadow-lg animate-pulse" title="Pest">
+            <Bug className="w-3 h-3 text-white" />
+          </button>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div 
+    <div
       className={`
         aspect-square relative 
         border-2 
         transition-all duration-300
-        group cursor-pointer
+        group 
+        ${(isOwner || (!isOwner && isMature)) ? 'cursor-pointer' : 'cursor-default'}
         flex flex-col items-center justify-center
         select-none
         ${getLandStyle()}
       `}
       onClick={handleClick}
     >
-      {/* 像素化内阴影 */}
       <div className="absolute inset-0 border-t-2 border-l-2 border-white/5 pointer-events-none"></div>
 
-      {/* 偷菜标记 */}
       <div className="absolute -top-3 -right-3 z-20 flex flex-col gap-1 items-end">
         {land.stolenCount > 0 && (
           <div className="bg-red-600 border border-black text-white px-1.5 py-0.5 text-[8px] font-bold font-mono shadow-sm animate-bounce">
-             <div className="flex items-center gap-0.5">
-               <Skull className="w-2 h-2" />
-               <span>-{land.stolenCount}</span>
-             </div>
+            <div className="flex items-center gap-0.5">
+              <Skull className="w-2 h-2" />
+              <span>-{land.stolenCount}</span>
+            </div>
           </div>
         )}
       </div>
-      
-      {/* 内容区域 */}
+
       <div className="relative w-full h-full flex flex-col items-center justify-center p-2">
-        
+
         {land.status === 'empty' ? (
-          <div className="text-[#57534e] group-hover:text-[#a8a29e] transition-colors">
-             {loading ? (
-                <div className="w-4 h-4 border-2 border-t-transparent border-white/50 rounded-full animate-spin"></div>
-             ) : (
-                <div className="text-4xl font-thin leading-none">+</div>
-             )}
+          <div className="text-[#57534e] transition-colors">
+            {loading ? (
+              <div className="w-4 h-4 border-2 border-t-transparent border-white/50 rounded-full animate-spin"></div>
+            ) : (
+              isOwner && <div className="text-4xl font-thin leading-none group-hover:text-[#a8a29e]">+</div>
+            )}
           </div>
         ) : (
           <>
-            {/* 枯萎遮罩层 */}
-            {land.status === 'withered' && (
-               <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
-                  <button
-                    onClick={handleShovel}
-                    className="bg-stone-700 hover:bg-red-600 text-white p-1.5 rounded-full border border-stone-500 shadow-lg transition-colors group/shovel"
-                    title="铲除枯萎作物"
-                  >
-                    <Shovel className="w-5 h-5 group-hover/shovel:animate-wiggle" />
-                  </button>
-               </div>
-            )}
-
-            {/* WITHERED 文字（显示在遮罩层之上） */}
-            {land.status === 'withered' && (
-              <div className="absolute bottom-1 z-30 text-[8px] text-red-400 font-mono bg-black/60 px-2 py-0.5">
-                 WITHERED
+            {(isOwner || (ownerId && land.status === 'withered')) && land.status === 'withered' && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-[1px]">
+                <button onClick={handleShovel} className="bg-stone-700 hover:bg-red-600 text-white p-1.5 rounded-full border border-stone-500 shadow-lg transition-colors">
+                  <Shovel className="w-5 h-5" />
+                </button>
               </div>
             )}
 
-            {/* 作物图标容器 */}
+            {land.status === 'withered' && (
+              <div className="absolute bottom-1 z-30 text-[8px] text-red-400 font-mono bg-black/60 px-2 py-0.5">
+                WITHERED
+              </div>
+            )}
+
             <div className={`w-12 h-12 sm:w-14 sm:h-14 transition-transform duration-500 relative ${isMature ? 'animate-bounce-slow' : 'scale-90 group-hover:scale-100'}`}>
               {renderCropIcon()}
-
-              {/* 交互浮层按钮 (仅在生长中显示) */}
-              {!isMature && land.status === 'planted' && (
-                <div className="absolute inset-0 flex items-center justify-center gap-1 z-30">
-                  {/* 1. 灾害按钮 */}
-                  {land.needsWater && (
-                    <button onClick={(e) => handleCare(e, 'water')} className="bg-blue-500 hover:bg-blue-600 p-1 rounded-full shadow-lg animate-pulse" title="浇水">
-                      <Droplets className="w-3 h-3 text-white" />
-                    </button>
-                  )}
-                  {land.hasWeeds && (
-                    <button onClick={(e) => handleCare(e, 'weed')} className="bg-green-600 hover:bg-green-700 p-1 rounded-full shadow-lg animate-pulse" title="除草">
-                      <Sprout className="w-3 h-3 text-white" />
-                    </button>
-                  )}
-                  {land.hasPests && (
-                    <button onClick={(e) => handleCare(e, 'pest')} className="bg-red-500 hover:bg-red-600 p-1 rounded-full shadow-lg animate-pulse" title="除虫">
-                      <Bug className="w-3 h-3 text-white" />
-                    </button>
-                  )}
-                </div>
-              )}
+              {!isMature && land.status === 'planted' && renderActions()}
             </div>
-            
-            {/* 底部信息栏 */}
+
             <div className="absolute bottom-1 w-full px-2 flex flex-col items-center z-10">
-              
+
               {!isMature && land.status !== 'withered' && (
                 <>
-                 <div className="w-full h-1.5 bg-black/50 border border-white/10 p-[1px] mb-0.5">
-                   <div 
-                      className="h-full bg-green-500 transition-all duration-1000 ease-linear" 
-                      style={{ width: `${progress}%` }} 
-                   />
-                 </div>
-                 {/* Remaining harvests display */}
-                 {land.remainingHarvests > 1 && (
+                  <div className="w-full h-1.5 bg-black/50 border border-white/10 p-[1px] mb-0.5">
+                    <div
+                      className="h-full bg-green-500 transition-all duration-1000 ease-linear"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+                  {land.remainingHarvests > 1 && (
                     <div className="text-[8px] text-yellow-200 font-mono scale-75 origin-bottom">
-                       {land.remainingHarvests} harvests left
+                      {land.remainingHarvests} harvests left
                     </div>
-                 )}
+                  )}
                 </>
               )}
 
               {isMature && (
-                <div className="bg-yellow-500/90 text-black text-[8px] px-2 py-0.5 font-bold font-mono border border-black shadow-sm tracking-wide">
-                  HARVEST
+                <div className={`text-black text-[8px] px-2 py-0.5 font-bold font-mono border border-black shadow-sm tracking-wide ${!isOwner ? 'bg-red-500 text-white' : 'bg-yellow-500/90'}`}>
+                  {!isOwner ? 'STEAL' : 'HARVEST'}
                 </div>
               )}
             </div>
@@ -471,11 +492,10 @@ export function LandTile({ land, locked, selectedCrop, onUpdate }: LandProps) {
         )}
       </div>
 
-      {/* 名字悬浮提示 */}
       {land.status !== 'empty' && (
-         <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 px-1 py-0.5 rounded text-[8px] font-mono text-white pointer-events-none z-30">
-            {cropName}
-         </div>
+        <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 px-1 py-0.5 rounded text-[8px] font-mono text-white pointer-events-none z-30">
+          {cropName}
+        </div>
       )}
     </div>
   );
