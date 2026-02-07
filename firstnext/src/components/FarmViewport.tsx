@@ -273,17 +273,47 @@ export function FarmViewport({
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-[10px] text-blue-300 hover:text-white bg-blue-950/50 px-2 py-0.5 border border-blue-800/50 hover:border-blue-500 transition-colors font-mono whitespace-nowrap"
                       >
-                        <Twitter className="w-3 h-3" />
+                        <svg className="w-3 h-3" viewBox="0 0 50 45" fill="currentColor">
+                          <path d="M39.2,0h7.6L30.2,19.1L49.8,45H34.4l-12-15.7L8.6,45H1l17.8-20.4L0,0h15.8l10.9,14.4L39.2,0z M36.5,40.4h4.2L13.5,4.3H8.9 L36.5,40.4z" />
+                        </svg>
                         <span className="truncate max-w-[80px] sm:max-w-none">@{selectedPlayer.twitter.replace('@', '')}</span>
                       </a>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[10px] text-stone-600 bg-stone-900/50 px-2 py-0.5 border border-stone-800 font-mono whitespace-nowrap">
-                        <Twitter className="w-3 h-3" />
+                        <svg className="w-3 h-3" viewBox="0 0 50 45" fill="currentColor">
+                          <path d="M39.2,0h7.6L30.2,19.1L49.8,45H34.4l-12-15.7L8.6,45H1l17.8-20.4L0,0h15.8l10.9,14.4L39.2,0z M36.5,40.4h4.2L13.5,4.3H8.9 L36.5,40.4z" />
+                        </svg>
                         <span>N/A</span>
                       </span>
                     )}
 
+
                     <div className="flex items-center gap-3 text-[10px] text-stone-400 bg-stone-900/50 px-2 py-0.5 border border-stone-800 font-mono whitespace-nowrap">
+                      <button
+                        // onClick={() => {
+                        //   setUserListSidebarType('following');
+                        //   setUserListPlayerId(selectedPlayer.id);
+                        //   setIsUserListSidebarOpen(true);
+                        // }}
+                        className="hover:text-orange-400 transition-colors"
+                      >
+                        <span className="text-white font-bold">{selectedPlayer._count?.following || 0}</span> <span className="text-[8px] uppercase">Following</span>
+                      </button>
+                      <span className="w-px h-2 bg-stone-700"></span>
+                      <button
+                        // onClick={() => {
+                        //   setUserListSidebarType('followers');
+                        //   setUserListPlayerId(selectedPlayer.id);
+                        //   setIsUserListSidebarOpen(true);
+                        // }}
+                        className="hover:text-orange-400 transition-colors"
+                      >
+                        <span className="text-white font-bold">{selectedPlayer._count?.followers || 0}</span> <span className="text-[8px] uppercase">Followers</span>
+                      </button>
+
+                      <span className="w-px h-2 bg-stone-700"></span>
+
+
                       <span className="text-stone-500">
                         <span className="text-white">Joined</span> {formatJoinDate(selectedPlayer.createdAt)}
                       </span>
@@ -307,8 +337,13 @@ export function FarmViewport({
           </div>
 
           {/* 土地网格 */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[#292524] min-h-0 relative shadow-[inset_0_10px_30px_rgba(0,0,0,0.3)]">
-            <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px)', backgroundSize: '40px 40px' }}></div>
+          <div
+            className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[#292524] min-h-0 relative shadow-[inset_0_10px_30px_rgba(0,0,0,0.3)]"
+            style={{
+              backgroundImage: 'linear-gradient(rgba(0,0,0,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.05) 1px, transparent 1px)',
+              backgroundSize: '40px 40px'
+            }}
+          >
 
             {/* 顶部统计 */}
             <div className="flex items-center justify-between mb-4 relative z-10 overflow-x-auto pb-2 sm:pb-0">

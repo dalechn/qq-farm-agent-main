@@ -21,6 +21,7 @@ function GameLayoutContent({ children }: { children: React.ReactNode }) {
     isActivityOpen,
     setIsActivityOpen,
     crops,
+    shopData, // Add shopData from context
     logs, // 如果 LogSidebar 全局化需要用到
     isLoading, // 用于 LogSidebar 加载状态
     hasMoreLogs, // 下面这几个是分页用的
@@ -50,7 +51,7 @@ function GameLayoutContent({ children }: { children: React.ReactNode }) {
       <ShopModal
         isOpen={isShopOpen}
         onClose={() => setIsShopOpen(false)}
-        crops={crops}
+        shopData={shopData}
       />
 
       {/* 移动端日志侧边栏 (可选：如果你希望它也是全局的) */}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   X,
   ShoppingBasket,
@@ -5,159 +6,15 @@ import {
   TrendingUp,
   Layers,
   RefreshCw,
-  MapPin,
   Coins,
-  Sprout
+  Sprout,
+  Dog,
+  Zap,
+  Hammer
 } from "lucide-react";
-import { type Crop } from "@/lib/api";
+import { type Crop, type ShopData } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
-
-// ==========================================
-// 1. 像素风 SVG 图标库 (与 LandTile 风格保持一致)
-// ==========================================
-
-// 通用占位
-const IconSeed = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-sm" shapeRendering="crispEdges">
-    <path d="M6 8h4v5H6z" fill="#A8A29E" />
-    <path d="M4 10h2v3H4zM10 10h2v3H10z" fill="#78716C" />
-    <path d="M5 11h1v1H5z" fill="#D6D3D1" />
-  </svg>
-);
-
-const IconRadish = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M5 1h2v3H5zM9 1h2v3H9zM7 3h2v2H7z" fill="#4ADE80" />
-    <path d="M4 5h8v5H4z" fill="#F8FAFC" />
-    <path d="M5 10h6v3H5z" fill="#E2E8F0" />
-    <path d="M7 13h2v2H7z" fill="#CBD5E1" />
-  </svg>
-);
-
-const IconCarrot = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M6 0h4v3H6z" fill="#22C55E" />
-    <path d="M4 3h8v4H4z" fill="#F97316" />
-    <path d="M5 7h6v5H5z" fill="#EA580C" />
-    <path d="M7 12h2v3H7z" fill="#C2410C" />
-  </svg>
-);
-
-const IconPotato = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M6 2h4v3H6z" fill="#15803D" />
-    <path d="M4 5h8v6H4z" fill="#D4A373" />
-    <path d="M5 6h1v1H5zM9 7h1v1H9zM6 9h1v1H6z" fill="#BC8A5F" />
-    <path d="M5 11h6v2H5z" fill="#A97142" />
-  </svg>
-);
-
-const IconCorn = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M5 2h6v12H5z" fill="#FACC15" />
-    <path d="M6 3h1v1H6zM8 3h1v1H8zM10 3h1v1H10z" fill="#FEF08A" />
-    <path d="M6 5h1v1H6zM8 5h1v1H8zM10 5h1v1H10z" fill="#FEF08A" />
-    <path d="M6 7h1v1H6zM8 7h1v1H8zM10 7h1v1H10z" fill="#FEF08A" />
-    <path d="M3 8h3v8H3z" fill="#22C55E" />
-    <path d="M10 8h3v8H10z" fill="#22C55E" />
-  </svg>
-);
-
-const IconStrawberry = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M5 3h6v2H5z" fill="#22C55E" />
-    <path d="M4 5h8v4H4z" fill="#EF4444" />
-    <path d="M5 9h6v3H5z" fill="#DC2626" />
-    <path d="M7 12h2v2H7z" fill="#991B1B" />
-    <path d="M6 6h1v1H6zM9 6h1v1H9zM7 8h1v1H7zM5 10h1v1H5zM10 10h1v1H10z" fill="#FECACA" />
-  </svg>
-);
-
-const IconTomato = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M7 2h2v2H7z" fill="#15803D" />
-    <path d="M5 4h6v2H5z" fill="#DC2626" />
-    <path d="M4 6h8v6H4z" fill="#EF4444" />
-    <path d="M5 12h6v2H5z" fill="#B91C1C" />
-    <path d="M6 7h2v2H6z" fill="#FECACA" opacity="0.3" />
-  </svg>
-);
-
-const IconWatermelon = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M3 4h10v9H3z" fill="#22C55E" />
-    <path d="M5 4h2v9H5z" fill="#14532D" opacity="0.8" />
-    <path d="M9 4h2v9H9z" fill="#14532D" opacity="0.8" />
-    <path d="M7 2h2v2H7z" fill="#8B4513" />
-  </svg>
-);
-
-const IconPumpkin = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M7 2h2v2H7z" fill="#5D4037" />
-    <path d="M4 4h8v8H4z" fill="#F97316" />
-    <path d="M3 5h2v6H3zM11 5h2v6H11z" fill="#EA580C" />
-    <path d="M6 5h1v7H6zM9 5h1v7H9z" fill="#C2410C" opacity="0.5" />
-  </svg>
-);
-
-// [新增] 茄子
-const IconEggplant = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M7 1h2v3H7z" fill="#22C55E" />
-    <path d="M5 4h6v2H5z" fill="#8B5CF6" />
-    <path d="M4 6h8v6H4z" fill="#7C3AED" />
-    <path d="M5 12h6v2H5z" fill="#5B21B6" />
-    <path d="M6 6h1v2H6z" fill="#A78BFA" opacity="0.5" />
-  </svg>
-);
-
-// [新增] 辣椒
-const IconPepper = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M7 1h2v3H7z" fill="#15803D" />
-    <path d="M5 4h6v2H5z" fill="#EF4444" />
-    <path d="M4 6h8v5H4z" fill="#DC2626" />
-    <path d="M6 11h4v3H6z" fill="#991B1B" />
-  </svg>
-);
-
-// [新增] 菠萝
-const IconPineapple = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M5 1h1v3H5zM7 0h2v4H7zM10 1h1v3H10z" fill="#22C55E" />
-    <path d="M4 4h8v9H4z" fill="#FACC15" />
-    <path d="M4 5h8v1H4zM4 7h8v1H4zM4 9h8v1H4zM4 11h8v1H4z" fill="#EAB308" opacity="0.5" />
-  </svg>
-);
-
-// [新增] 葡萄
-const IconGrape = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M7 1h2v2H7z" fill="#166534" />
-    <path d="M5 3h6v3H5z" fill="#9333EA" />
-    <path d="M4 6h8v3H4z" fill="#7E22CE" />
-    <path d="M5 9h6v3H5z" fill="#6B21A8" />
-    <path d="M7 12h2v2H7z" fill="#581C87" />
-  </svg>
-);
-
-// 图标映射表
-const CROP_ICONS: Record<string, React.ComponentType> = {
-  radish: IconRadish,
-  carrot: IconCarrot,
-  corn: IconCorn,
-  strawberry: IconStrawberry,
-  watermelon: IconWatermelon,
-  tomato: IconTomato,
-  eggplant: IconEggplant,
-  potato: IconPotato,
-  pepper: IconPepper,
-  pumpkin: IconPumpkin,
-  pineapple: IconPineapple,
-  grape: IconGrape,
-  // 如果需要更多，可以继续扩展，未匹配的会显示种子图标
-};
+import { IconSeed, CROP_ICONS } from "@/components/ui/CropIcons";
 
 // 土地类型中文映射
 const LAND_TYPE_NAMES: Record<string, string> = {
@@ -178,33 +35,37 @@ const LAND_TYPE_COLORS: Record<string, string> = {
 interface ShopModalProps {
   isOpen: boolean;
   onClose: () => void;
-  crops: Crop[];
+  shopData: ShopData | null;
 }
 
-export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
+type TabType = 'seeds' | 'items';
+
+export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
   const { t } = useI18n();
+  const [activeTab, setActiveTab] = useState<TabType>('seeds');
 
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center font-mono p-4">
       {/* 背景遮罩 */}
-      <div 
-        className="absolute inset-0 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200" 
-        onClick={onClose} 
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+        onClick={onClose}
       />
-      
+
       {/* 模态框主体 */}
-      <div 
-        className="relative w-full max-w-4xl bg-[#1c1917] border-2 border-[#44403c] shadow-[0_0_0_1px_rgba(0,0,0,0.5),8px_8px_0_0_#0c0a09] flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200"
+      {/* 修改: max-h-[85vh] -> h-[85vh] 以固定高度，避免切换 Tab 时跳动 */}
+      <div
+        className="relative w-full max-w-4xl bg-[#1c1917] border-2 border-[#44403c] flex flex-col h-[85vh] animate-in zoom-in-95 duration-200 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        
+
         {/* Header */}
         <div className="flex-none h-14 border-b-2 border-[#44403c] bg-[#292524] flex items-center justify-between px-6 select-none">
           <div className="flex items-center gap-4">
             <div className="w-10 h-10 bg-orange-600 border-b-4 border-r-4 border-orange-800 flex items-center justify-center shadow-sm rounded-sm">
-               <ShoppingBasket className="w-6 h-6 text-white" />
+              <ShoppingBasket className="w-6 h-6 text-white" />
             </div>
             <div className="flex flex-col">
               <h2 className="font-bold text-lg text-stone-200 uppercase tracking-widest leading-none">{t('shop.title')}</h2>
@@ -222,120 +83,225 @@ export function ShopModal({ isOpen, onClose, crops }: ShopModalProps) {
             </button>
           </div>
         </div>
-        
-        {/* Content - Grid Layout */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[#1c1917]">
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-             {crops.map((crop) => {
-               const yieldAmount = crop.yield || 1;
-               const totalRevenue = crop.sellPrice * yieldAmount * crop.maxHarvests;
-               const totalCost = crop.seedPrice;
-               const netProfit = totalRevenue - totalCost;
-               const isProfitable = netProfit >= 0;
-               
-               const CropIcon = CROP_ICONS[crop.type] || IconSeed;
-               const landTypeColor = LAND_TYPE_COLORS[crop.requiredLandType || 'normal'] || LAND_TYPE_COLORS['normal'];
 
-               return (
-               <div key={crop.type} className="group relative bg-[#292524] border-2 border-[#44403c] hover:border-orange-500/50 hover:bg-[#322c2b] transition-all duration-200 shadow-sm flex flex-col">
+        {/* Tabs Navigation */}
+        <div className="flex-none px-6 pt-4 bg-[#292524] border-b-2 border-[#44403c] flex gap-2 select-none">
+          <button
+            onClick={() => setActiveTab('seeds')}
+            className={`
+              px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all rounded-t-sm border-t-2 border-x-2
+              flex items-center gap-2
+              ${activeTab === 'seeds'
+                ? 'bg-[#1c1917] border-[#44403c] border-b-[#1c1917] text-orange-400 -mb-[2px] z-10'
+                : 'bg-[#292524] border-transparent text-stone-500 hover:text-stone-300 hover:bg-[#322c2b]'}
+            `}
+          >
+            <Sprout className="w-4 h-4" />
+            Seeds
+          </button>
 
-                  {/* Card Header & Icon */}
-                  <div className="flex p-3 gap-3">
-                     <div className="w-16 h-16 bg-[#1c1917] border-2 border-[#44403c] flex items-center justify-center p-1 group-hover:border-orange-500/30 transition-colors">
-                        <div className="w-full h-full animate-bounce-slow">
-                           <CropIcon />
-                        </div>
-                     </div>
-                     <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start">
-                           <h3 className="font-bold text-stone-100 text-base truncate pr-2">{crop.name}</h3>
-                           <span className={`text-[10px] px-1.5 py-0.5 border ${landTypeColor} rounded-[2px] font-bold uppercase`}>
-                             {t(`land.${crop.requiredLandType || 'normal'}`)}
-                           </span>
-                        </div>
-                        <div className="text-[10px] text-stone-500 font-mono mt-1">ID: {crop.type.toUpperCase()}</div>
-
-                        {/* 简要收益概览 */}
-                        <div className="mt-2 flex items-center gap-2">
-                           <div className="flex items-center gap-1 text-yellow-500 bg-yellow-500/10 px-1.5 py-0.5 rounded-[2px] border border-yellow-500/20">
-                              <Coins className="w-3 h-3" />
-                              <span className="font-bold text-xs">{crop.seedPrice}</span>
-                           </div>
-                           <div className="text-[10px] text-stone-500">→</div>
-                           <div className={`text-[10px] font-bold ${isProfitable ? 'text-green-400' : 'text-red-400'}`}>
-                             {t('crop.netProfit')} {netProfit}
-                           </div>
-                        </div>
-                     </div>
-                  </div>
-
-                  {/* Detailed Stats Grid */}
-                  <div className="grid grid-cols-2 gap-px bg-[#44403c] border-y border-[#44403c] mx-0">
-                      {/* 出售单价 */}
-                      <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('crop.sellPrice')}</span>
-                         <span className="text-stone-300 font-bold text-xs flex items-center gap-1">
-                            <Coins className="w-3 h-3 text-stone-500" />
-                            {crop.sellPrice} <span className="text-[9px] font-normal text-stone-600">{t('crop.perUnit')}</span>
-                         </span>
-                      </div>
-
-                      {/* 单季产量 */}
-                      <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('crop.yield')}</span>
-                         <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
-                            <Layers className="w-3 h-3 text-blue-500/50" />
-                            x{yieldAmount} <span className="text-[9px] font-normal text-stone-600">{t('crop.perSeason')}</span>
-                         </span>
-                      </div>
-
-                      {/* 成熟时间 */}
-                      <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('crop.growth')}</span>
-                         <span className="text-stone-300 font-bold text-xs flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-stone-500" />
-                            {crop.matureTime}s
-                         </span>
-                      </div>
-
-                      {/* 经验值 */}
-                      <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                         <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('crop.exp')}</span>
-                         <span className="text-purple-300 font-bold text-xs flex items-center gap-1">
-                            <TrendingUp className="w-3 h-3 text-purple-500/50" />
-                            +{crop.exp}
-                         </span>
-                      </div>
-                  </div>
-
-                  {/* Multi-Harvest Info (if applicable) */}
-                  <div className="p-2 bg-[#292524] flex items-center justify-between text-[10px]">
-                     <div className="flex items-center gap-1.5 text-stone-400" title={t('crop.maxHarvests')}>
-                        <RefreshCw className="w-3 h-3" />
-                        <span>{crop.maxHarvests} {t('crop.seasons')}</span>
-                     </div>
-
-                     {crop.regrowTime > 0 ? (
-                        <div className="flex items-center gap-1 text-emerald-500">
-                           <Sprout className="w-3 h-3" />
-                           <span>{t('crop.regrow')}: {crop.regrowTime}s</span>
-                        </div>
-                     ) : (
-                        <span className="text-stone-600">{t('crop.oneTime')}</span>
-                     )}
-                  </div>
-               </div>
-             )})}
-           </div>
+          <button
+            onClick={() => setActiveTab('items')}
+            className={`
+              px-4 py-2 text-xs font-bold uppercase tracking-widest transition-all rounded-t-sm border-t-2 border-x-2
+              flex items-center gap-2
+              ${activeTab === 'items'
+                ? 'bg-[#1c1917] border-[#44403c] border-b-[#1c1917] text-orange-400 -mb-[2px] z-10'
+                : 'bg-[#292524] border-transparent text-stone-500 hover:text-stone-300 hover:bg-[#322c2b]'}
+            `}
+          >
+            <Hammer className="w-4 h-4" />
+            Tools & Items
+          </button>
         </div>
-        
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-[#1c1917]">
+          {!shopData ? (
+            <div className="flex flex-col items-center justify-center h-full text-stone-500">
+              <RefreshCw className="w-8 h-8 animate-spin mb-4 text-orange-500" />
+              <span>Loading shop data...</span>
+            </div>
+          ) : (
+            <>
+              {/* Seeds Tab Content */}
+              {activeTab === 'seeds' && (
+                <div className="animate-in fade-in duration-300">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {shopData.crops.map((crop: Crop) => {
+                      const CropIcon = CROP_ICONS[crop.type] || IconSeed;
+                      const landTypeColor = LAND_TYPE_COLORS[crop.requiredLandType || 'normal'] || LAND_TYPE_COLORS['normal'];
+
+                      return (
+                        <div key={crop.type} className="group relative bg-[#292524] border-2 border-[#44403c] hover:border-orange-500/50 hover:bg-[#322c2b] transition-all duration-200 shadow-sm flex flex-col">
+                          {/* Card Header & Icon */}
+                          <div className="flex p-3 gap-3">
+                            <div className="w-16 h-16 bg-[#1c1917] border-2 border-[#44403c] flex items-center justify-center p-1 group-hover:border-orange-500/30 transition-colors">
+                              <div className="w-full h-full">
+                                <CropIcon />
+                              </div>
+                            </div>
+                            <div className="flex-1 flex flex-col justify-between">
+                              <div>
+                                <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide leading-tight">{crop.name}</h3>
+                                <div className={`inline-block mt-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${landTypeColor}`}>
+                                  {LAND_TYPE_NAMES[crop.requiredLandType || 'normal']}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Pricing */}
+                          <div className="grid grid-cols-2 gap-px bg-[#1c1917] border-y border-[#44403c]">
+                            <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">Seed Price</span>
+                              <span className="text-orange-300 font-bold text-xs flex items-center gap-1">
+                                <Coins className="w-3 h-3 text-orange-500/50" />
+                                {crop.seedPrice}
+                              </span>
+                            </div>
+                            <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">Sell Price</span>
+                              <span className="text-green-300 font-bold text-xs flex items-center gap-1">
+                                <Coins className="w-3 h-3 text-green-500/50" />
+                                {crop.sellPrice}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Stats Grid */}
+                          <div className="grid grid-cols-3 gap-px bg-[#1c1917]">
+                            <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">Yield</span>
+                              <span className="text-yellow-300 font-bold text-xs flex items-center gap-1">
+                                <Layers className="w-3 h-3 text-yellow-500/50" />
+                                {crop.yield || 1}
+                              </span>
+                            </div>
+                            <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">Time</span>
+                              <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-stone-500" />
+                                {crop.matureTime}s
+                              </span>
+                            </div>
+                            <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">EXP</span>
+                              <span className="text-purple-300 font-bold text-xs flex items-center gap-1">
+                                <TrendingUp className="w-3 h-3 text-purple-500/50" />
+                                +{crop.exp}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Multi-Harvest Info */}
+                          <div className="p-2 bg-[#292524] flex items-center justify-between text-[10px]">
+                            <div className="flex items-center gap-1.5 text-stone-400">
+                              <RefreshCw className="w-3 h-3" />
+                              <span>{crop.maxHarvests} harvests</span>
+                            </div>
+                            {crop.regrowTime > 0 ? (
+                              <div className="flex items-center gap-1 text-emerald-500">
+                                <Sprout className="w-3 h-3" />
+                                <span>Regrow: {crop.regrowTime}s</span>
+                              </div>
+                            ) : (
+                              <span className="text-stone-600">One-time</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Items Tab Content */}
+              {activeTab === 'items' && (
+                <div className="animate-in fade-in duration-300">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* Dog Item */}
+                    <div className="bg-[#292524] border-2 border-[#44403c] hover:border-blue-500/50 hover:bg-[#322c2b] transition-all duration-200 shadow-sm flex flex-col">
+                      <div className="flex p-3 gap-3">
+                        <div className="w-16 h-16 bg-[#1c1917] border-2 border-blue-500/30 flex items-center justify-center">
+                          <Dog className="w-10 h-10 text-blue-400" />
+                        </div>
+                        <div className="flex-1 flex flex-col justify-between">
+                          <div>
+                            <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide">Guard Dog</h3>
+                            <p className="text-[10px] text-stone-400 mt-1">Protects your farm from thieves</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-px bg-[#1c1917] border-y border-[#44403c]">
+                        <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                          <span className="text-[9px] text-stone-500 uppercase">Buy Dog</span>
+                          <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
+                            <Coins className="w-3 h-3 text-blue-500/50" />
+                            {shopData.dog.price}
+                          </span>
+                        </div>
+                        <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                          <span className="text-[9px] text-stone-500 uppercase">Dog Food</span>
+                          <span className="text-green-300 font-bold text-xs flex items-center gap-1">
+                            <Coins className="w-3 h-3 text-green-500/50" />
+                            {shopData.dog.foodPrice}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-2 bg-[#292524] text-[10px] text-stone-400 space-y-0.5">
+                        <div>Catch Rate: {shopData.dog.catchRate}%</div>
+                        <div>Food Duration: {Math.floor(shopData.dog.foodDuration / 3600)}h</div>
+                        <div>Bite Penalty: {shopData.dog.bitePenalty} coins</div>
+                      </div>
+                    </div>
+
+                    {/* Fertilizers */}
+                    {shopData.fertilizers.map((fertilizer) => (
+                      <div key={fertilizer.type} className="bg-[#292524] border-2 border-[#44403c] hover:border-green-500/50 hover:bg-[#322c2b] transition-all duration-200 shadow-sm flex flex-col">
+                        <div className="flex p-3 gap-3">
+                          <div className="w-16 h-16 bg-[#1c1917] border-2 border-green-500/30 flex items-center justify-center">
+                            <Zap className="w-10 h-10 text-green-400" />
+                          </div>
+                          <div className="flex-1 flex flex-col justify-between">
+                            <div>
+                              <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide">{fertilizer.name}</h3>
+                              <p className="text-[10px] text-stone-400 mt-1">Speed up crop growth</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-px bg-[#1c1917] border-y border-[#44403c]">
+                          <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                            <span className="text-[9px] text-stone-500 uppercase">Price</span>
+                            <span className="text-green-300 font-bold text-xs flex items-center gap-1">
+                              <Coins className="w-3 h-3 text-green-500/50" />
+                              {fertilizer.price}
+                            </span>
+                          </div>
+                          <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                            <span className="text-[9px] text-stone-500 uppercase">Time Saved</span>
+                            <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
+                              <Clock className="w-3 h-3 text-blue-500/50" />
+                              {Math.floor(fertilizer.reduceSeconds / 3600)}h
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
         {/* Footer */}
         <div className="p-3 bg-[#292524] border-t-2 border-[#44403c] flex justify-between items-center text-[10px] text-stone-500">
-           <div className="flex gap-4">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full"></span> {t('footer.online')}</span>
-              <span>{t('footer.refresh')}: AUTO</span>
-           </div>
-           <span className="font-mono opacity-50">{t('footer.prices')}</span>
+          <div className="flex gap-4">
+            <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full"></span> Online</span>
+            <span>Refresh: AUTO</span>
+          </div>
+          <span className="font-mono opacity-50">Prices subject to change</span>
         </div>
       </div>
     </div>

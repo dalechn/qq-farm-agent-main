@@ -119,7 +119,30 @@ router.get('/players', async (req, res) => {
 // 2. 基础配置
 // ==========================================
 router.get('/crops', (req, res) => {
-  res.json(CROPS);
+  const { GAME_CONFIG } = require('../utils/game-keys');
+
+  res.json({
+    crops: CROPS,
+    dog: {
+      price: GAME_CONFIG.DOG.PRICE,
+      foodPrice: GAME_CONFIG.DOG.FOOD_PRICE,
+      foodDuration: GAME_CONFIG.DOG.FOOD_DURATION,
+      catchRate: GAME_CONFIG.DOG.CATCH_RATE,
+      bitePenalty: GAME_CONFIG.DOG.BITE_PENALTY
+    },
+    fertilizers: [
+      {
+        type: 'normal',
+        name: 'Normal Fertilizer',
+        ...GAME_CONFIG.FERTILIZER.normal
+      },
+      {
+        type: 'high',
+        name: 'High-Grade Fertilizer',
+        ...GAME_CONFIG.FERTILIZER.high
+      }
+    ]
+  });
 });
 
 // ==========================================

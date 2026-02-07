@@ -6,9 +6,6 @@ import prisma from '../utils/prisma';
 import { GAME_CONFIG, CROPS, LandStatus } from '../utils/game-keys';
 import { broadcast } from '../utils/websocket';
 
-const MAX_DAILY_CARE_EXP = 1000;
-const DISASTER_CHECK_INTERVAL = 5 * 60 * 1000;
-
 export class GameService {
 
   // ==========================================
@@ -66,7 +63,7 @@ export class GameService {
       };
       await redisClient.hSet(landKey, landData);
     }
-    await redisClient.expire(playerKey, 86400 * 3);
+    await redisClient.expire(playerKey, GAME_CONFIG.REDIS_PLAYER_CACHE_TTL);
   }
 
   static async getPlayerState(playerId: string) {
@@ -120,7 +117,7 @@ export class GameService {
           PROB_PEST.toString(),
           PROB_WATER.toString(),
           Date.now().toString(),
-          DISASTER_CHECK_INTERVAL.toString()
+          GAME_CONFIG.DISASTER_CHECK_INTERVAL.toString()
         ]
       });
       // const affected = res as number[];
@@ -158,6 +155,7 @@ export class GameService {
 
     const requiredLevelIndex = GAME_CONFIG.LAND_LEVELS.indexOf(crop.requiredLandType as any);
     const safeLevelIndex = requiredLevelIndex === -1 ? 0 : requiredLevelIndex;
+    const requiredPlayerLevel = (crop as any).requiredLevel || 1;
 
     const res = await redisClient.eval(LUA_SCRIPTS.PLANT, {
       keys: [landKey, KEYS.DIRTY_LANDS, KEYS.PLAYER(playerId), KEYS.DIRTY_PLAYERS],
@@ -168,7 +166,8 @@ export class GameService {
         maxHarvests.toString(),
         expGain.toString(),
         safeLevelIndex.toString(),
-        seedCost.toString()
+        seedCost.toString(),
+        requiredPlayerLevel.toString()
       ]
     });
     this.checkLuaError(res);
@@ -411,7 +410,7 @@ export class GameService {
     const dailyExpKey = `daily:exp:${today}:${operatorId}`;
     const res = await redisClient.eval(LUA_SCRIPTS.CARE, {
       keys: [landKey, KEYS.PLAYER(operatorId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS, dailyExpKey],
-      arguments: [field, xpGain.toString(), MAX_DAILY_CARE_EXP.toString()]
+      arguments: [field, xpGain.toString(), GAME_CONFIG.MAX_DAILY_CARE_EXP.toString()]
     });
     this.checkLuaError(res);
 

@@ -4,124 +4,14 @@ import { useEffect, useState } from "react";
 import { Hand, Skull, Droplets, Bug, Sprout, Shovel, Zap, Lock } from "lucide-react";
 import { Land, plant, harvest, careLand, shovelLand, useFertilizer, steal } from "../lib/api";
 import { useToast } from "./ui/Toast";
+import {
+  IconSprout,
+  IconGrowing,
+  IconRadish,
+  CROP_ICONS
+} from "./ui/CropIcons";
 
-// ==========================================
-// 1. 像素风 SVG 图标组件库
-// ==========================================
-
-// 通用：萌芽阶段
-const IconSprout = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-sm" shapeRendering="crispEdges">
-    <path d="M7 10h2v6H7z" fill="#8B4513" /> {/* 茎 */}
-    <path d="M5 6h2v2H5zM9 6h2v2H9z" fill="#4ADE80" /> {/* 叶子 */}
-    <path d="M7 8h2v2H7z" fill="#22C55E" /> {/* 中心 */}
-  </svg>
-);
-
-// 通用：生长阶段
-const IconGrowing = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-sm" shapeRendering="crispEdges">
-    <path d="M7 9h2v7H7z" fill="#8B4513" />
-    <path d="M4 5h3v3H4zM9 5h3v3H9z" fill="#4ADE80" />
-    <path d="M6 8h4v2H6z" fill="#22C55E" />
-    <path d="M3 4h2v2H3zM11 4h2v2H11z" fill="#86EFAC" />
-  </svg>
-);
-
-// 作物：白萝卜 (Radish)
-const IconRadish = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M5 1h2v3H5zM9 1h2v3H9zM7 3h2v2H7z" fill="#4ADE80" />
-    <path d="M4 5h8v5H4z" fill="#F8FAFC" />
-    <path d="M5 10h6v3H5z" fill="#E2E8F0" />
-    <path d="M7 13h2v2H7z" fill="#CBD5E1" />
-  </svg>
-);
-
-// 作物：胡萝卜 (Carrot)
-const IconCarrot = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M6 0h4v3H6z" fill="#22C55E" />
-    <path d="M4 3h8v4H4z" fill="#F97316" />
-    <path d="M5 7h6v5H5z" fill="#EA580C" />
-    <path d="M7 12h2v3H7z" fill="#C2410C" />
-  </svg>
-);
-
-// 作物：土豆 (Potato)
-const IconPotato = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M6 2h4v3H6z" fill="#15803D" />
-    <path d="M4 5h8v6H4z" fill="#D4A373" />
-    <path d="M5 6h1v1H5zM9 7h1v1H9zM6 9h1v1H6z" fill="#BC8A5F" />
-    <path d="M5 11h6v2H5z" fill="#A97142" />
-  </svg>
-);
-
-// 作物：玉米 (Corn)
-const IconCorn = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M5 2h6v12H5z" fill="#FACC15" />
-    <path d="M6 3h1v1H6zM8 3h1v1H8zM10 3h1v1H10z" fill="#FEF08A" />
-    <path d="M6 5h1v1H6zM8 5h1v1H8zM10 5h1v1H10z" fill="#FEF08A" />
-    <path d="M6 7h1v1H6zM8 7h1v1H8zM10 7h1v1H10z" fill="#FEF08A" />
-    <path d="M3 8h3v8H3z" fill="#22C55E" />
-    <path d="M10 8h3v8H10z" fill="#22C55E" />
-  </svg>
-);
-
-// 作物：草莓 (Strawberry)
-const IconStrawberry = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M5 3h6v2H5z" fill="#22C55E" />
-    <path d="M4 5h8v4H4z" fill="#EF4444" />
-    <path d="M5 9h6v3H5z" fill="#DC2626" />
-    <path d="M7 12h2v2H7z" fill="#991B1B" />
-    <path d="M6 6h1v1H6zM9 6h1v1H9zM7 8h1v1H7zM5 10h1v1H5zM10 10h1v1H10z" fill="#FECACA" />
-  </svg>
-);
-
-// 作物：番茄 (Tomato)
-const IconTomato = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M7 2h2v2H7z" fill="#15803D" />
-    <path d="M5 4h6v2H5z" fill="#DC2626" />
-    <path d="M4 6h8v6H4z" fill="#EF4444" />
-    <path d="M5 12h6v2H5z" fill="#B91C1C" />
-    <path d="M6 7h2v2H6z" fill="#FECACA" opacity="0.3" />
-  </svg>
-);
-
-// 作物：西瓜 (Watermelon)
-const IconWatermelon = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M3 4h10v9H3z" fill="#22C55E" />
-    <path d="M5 4h2v9H5z" fill="#14532D" opacity="0.8" />
-    <path d="M9 4h2v9H9z" fill="#14532D" opacity="0.8" />
-    <path d="M7 2h2v2H7z" fill="#8B4513" />
-  </svg>
-);
-
-// 作物：南瓜 (Pumpkin)
-const IconPumpkin = () => (
-  <svg viewBox="0 0 16 16" className="w-full h-full drop-shadow-md" shapeRendering="crispEdges">
-    <path d="M7 2h2v2H7z" fill="#5D4037" />
-    <path d="M4 4h8v8H4z" fill="#F97316" />
-    <path d="M3 5h2v6H3zM11 5h2v6H11z" fill="#EA580C" />
-    <path d="M6 5h1v7H6zM9 5h1v7H9z" fill="#C2410C" opacity="0.5" />
-  </svg>
-);
-
-const CROP_COMPONENTS: Record<string, any> = {
-  radish: IconRadish,
-  carrot: IconCarrot,
-  potato: IconPotato,
-  corn: IconCorn,
-  strawberry: IconStrawberry,
-  tomato: IconTomato,
-  watermelon: IconWatermelon,
-  pumpkin: IconPumpkin,
-};
+const CROP_COMPONENTS = CROP_ICONS;
 
 const CROP_CONFIG: Record<string, { color: string; name: string }> = {
   radish: { color: "text-slate-200", name: "Radish" },
@@ -434,7 +324,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
 
       <div className="absolute -top-3 -right-3 z-20 flex flex-col gap-1 items-end">
         {land.stolenCount > 0 && (
-          <div className="bg-red-600 border border-black text-white px-1.5 py-0.5 text-[8px] font-bold font-mono shadow-sm animate-bounce">
+          <div className="bg-red-600 border border-black text-white px-1.5 py-0.5 text-[8px] font-bold font-mono shadow-sm">
             <div className="flex items-center gap-0.5">
               <Skull className="w-2 h-2" />
               <span>-{land.stolenCount}</span>

@@ -65,6 +65,7 @@ model Crop {
   exp        Int
   yield      Int    @default(1)
   requiredLandType String @default("normal")
+  requiredLevel Int @default(1)
   maxHarvests Int    @default(1) 
   regrowTime  Int    @default(0) 
 }

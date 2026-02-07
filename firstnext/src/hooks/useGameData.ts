@@ -1,7 +1,7 @@
 // src/hooks/useGameData.ts
 
 import { useState, useEffect, useCallback } from 'react';
-import { publicApi, getMe, Player, Crop, ActionLog } from '@/lib/api';
+import { publicApi, getMe, Player, Crop, ActionLog, ShopData } from '@/lib/api';
 import { useWebSocket, WebSocketMessage } from './useWebSocket';
 
 interface UseGameDataOptions {
@@ -14,6 +14,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
 
   const [players, setPlayers] = useState<Player[]>([]);
   const [crops, setCrops] = useState<Crop[]>([]);
+  const [shopData, setShopData] = useState<ShopData | null>(null);
   const [logs, setLogs] = useState<ActionLog[]>([]);
   const [myPlayer, setMyPlayer] = useState<Player | null>(null);
 
@@ -88,7 +89,8 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const fetchCrops = useCallback(async () => {
     try {
       const data = await publicApi.getCrops();
-      setCrops(data);
+      setShopData(data);
+      setCrops(data.crops);
     } catch (err: any) {
       console.error('Failed to fetch crops:', err);
     }
@@ -200,6 +202,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
     players,
     myPlayer,
     crops,
+    shopData,
     logs,
     stats,
     isLoading,

@@ -91,6 +91,27 @@ export interface Crop {
   regrowTime: number;
 }
 
+export interface DogShopItem {
+  price: number;
+  foodPrice: number;
+  foodDuration: number;
+  catchRate: number;
+  bitePenalty: number;
+}
+
+export interface FertilizerShopItem {
+  type: 'normal' | 'high';
+  name: string;
+  price: number;
+  reduceSeconds: number;
+}
+
+export interface ShopData {
+  crops: Crop[];
+  dog: DogShopItem;
+  fertilizers: FertilizerShopItem[];
+}
+
 export interface Notification {
   id: number;
   type: string;
@@ -285,7 +306,7 @@ export const publicApi = {
         : `/logs?page=${page}&limit=${limit}`
     ),
 
-  getCrops: () => request<Crop[]>('/crops'),
+  getCrops: () => request<ShopData>('/crops'),
 
   createPlayer: async (name: string) => {
     const url = `${AUTH_BASE}/player`;

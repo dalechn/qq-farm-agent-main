@@ -43,8 +43,9 @@ export const LUA_SCRIPTS = {
     local now = ARGV[3]
     local maxHarvests = ARGV[4]
     local expGain = tonumber(ARGV[5])
-    local requiredLevel = tonumber(ARGV[6])
+    local requiredLandLevel = tonumber(ARGV[6])
     local seedCost = tonumber(ARGV[7])
+    local requiredPlayerLevel = tonumber(ARGV[8])
 
     -- 1. 检查土地状态
     local landInfo = redis.call('HMGET', landKey, 'status', 'landType')
@@ -56,25 +57,31 @@ export const LUA_SCRIPTS = {
     end
 
     -- 2. 检查土地等级
-    local currentLevel = 0
-    if landType == 'normal' then currentLevel = 0
-    elseif landType == 'red' then currentLevel = 1
-    elseif landType == 'black' then currentLevel = 2
-    elseif landType == 'gold' then currentLevel = 3
+    local currentLandLevel = 0
+    if landType == 'normal' then currentLandLevel = 0
+    elseif landType == 'red' then currentLandLevel = 1
+    elseif landType == 'black' then currentLandLevel = 2
+    elseif landType == 'gold' then currentLandLevel = 3
     end
 
-    if currentLevel < requiredLevel then
+    if currentLandLevel < requiredLandLevel then
       return {err = 'Land level too low'}
     end
 
-    -- 3. 检查余额并扣费
+    -- 3. 检查玩家等级
+    local playerLevel = tonumber(redis.call('HGET', playerKey, 'level') or '1')
+    if playerLevel < requiredPlayerLevel then
+      return {err = 'Player level too low'}
+    end
+
+    -- 4. 检查余额并扣费
     local gold = tonumber(redis.call('HGET', playerKey, 'gold') or '0')
     if gold < seedCost then
       return {err = 'Not enough gold'}
     end
     redis.call('HINCRBYFLOAT', playerKey, 'gold', -seedCost)
 
-    -- 4. 执行种植
+    -- 5. 执行种植
     redis.call('HMSET', landKey, 
       'status', 'planted',
       'cropId', cropId,
@@ -90,7 +97,7 @@ export const LUA_SCRIPTS = {
     redis.call('SADD', dirtyLands, landKey)
     redis.call('SADD', dirtyPlayers, playerKey)
 
-    -- 5. 经验与升级逻辑
+    -- 6. 经验与升级逻辑
     ${XP_LOGIC}
 
     return {'OK', tostring(isLevelUp)}

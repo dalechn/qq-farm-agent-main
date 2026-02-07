@@ -32,6 +32,11 @@ export const GAME_CONFIG = {
   // 导出经验表供 Lua 使用
   LEVEL_UP_EXP,
 
+  // Service-level constants
+  MAX_DAILY_CARE_EXP: 1000,
+  DISASTER_CHECK_INTERVAL: 60 * 1000 * 1, // 1 minute in milliseconds
+  REDIS_PLAYER_CACHE_TTL: 60 * 60 * 24 * 3, // 3 days in seconds
+
   LAND: {
     INITIAL_COUNT: 6,
     MAX_LIMIT: 18,
@@ -41,7 +46,7 @@ export const GAME_CONFIG = {
   // 经验倍率配置
   EXP_RATES: {
     PLANT: 10,
-    SHOVEL: 5,
+    SHOVEL: 10,
     CARE: 10,
   },
 
@@ -92,7 +97,8 @@ export const CROPS = [
     yield: 1,
     maxHarvests: 1,
     regrowTime: 0,
-    requiredLandType: 'normal'
+    requiredLandType: 'normal',
+    requiredLevel: 1
   },
   {
     type: 'carrot',
@@ -104,7 +110,8 @@ export const CROPS = [
     exp: 5,
     maxHarvests: 1,
     regrowTime: 0,
-    requiredLandType: 'normal'
+    requiredLandType: 'normal',
+    requiredLevel: 1
   },
   {
     type: 'potato',
@@ -116,7 +123,8 @@ export const CROPS = [
     yield: 2,
     maxHarvests: 1,
     regrowTime: 0,
-    requiredLandType: 'normal'
+    requiredLandType: 'normal',
+    requiredLevel: 3
   },
   {
     type: 'corn',
@@ -128,7 +136,8 @@ export const CROPS = [
     yield: 2,
     maxHarvests: 5,
     regrowTime: 60,
-    requiredLandType: 'normal'
+    requiredLandType: 'normal',
+    requiredLevel: 2
   },
   // [Red Land]
   {
@@ -141,7 +150,8 @@ export const CROPS = [
     yield: 2,
     maxHarvests: 3,
     regrowTime: 90,
-    requiredLandType: 'red'
+    requiredLandType: 'red',
+    requiredLevel: 5
   },
   {
     type: 'tomato',
@@ -153,7 +163,8 @@ export const CROPS = [
     yield: 3,
     maxHarvests: 4,
     regrowTime: 120,
-    requiredLandType: 'red'
+    requiredLandType: 'red',
+    requiredLevel: 8
   },
   {
     type: 'watermelon',
@@ -165,7 +176,8 @@ export const CROPS = [
     yield: 3,
     maxHarvests: 1,
     regrowTime: 0,
-    requiredLandType: 'red'
+    requiredLandType: 'red',
+    requiredLevel: 6
   },
   // [Black Land]
   {
@@ -178,7 +190,8 @@ export const CROPS = [
     yield: 1,
     maxHarvests: 1,
     regrowTime: 0,
-    requiredLandType: 'black'
+    requiredLandType: 'black',
+    requiredLevel: 15
   },
   // [Gold Land]
   {
@@ -191,6 +204,7 @@ export const CROPS = [
     yield: 1,
     maxHarvests: 1,
     regrowTime: 0,
-    requiredLandType: 'gold'
+    requiredLandType: 'gold',
+    requiredLevel: 30
   }
 ];

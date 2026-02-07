@@ -42,12 +42,12 @@ router.post('/unfollow', authenticateApiKey, async (req: any, res) => {
   }
 });
 
-// [修改] 获取关注列表 (公开, 支持分页)
-router.get('/following', async (req: any, res) => {
+// [修改] 获取关注列表 (需要认证, 支持分页)
+router.get('/following', authenticateApiKey, async (req: any, res) => {
   const { userId, page, limit } = req.query;
 
   if (!userId) {
-      return res.status(400).json({ error: "Missing userId query parameter" });
+    return res.status(400).json({ error: "Missing userId query parameter" });
   }
 
   try {
@@ -60,11 +60,11 @@ router.get('/following', async (req: any, res) => {
   }
 });
 
-// [修改] 获取粉丝列表 (公开, 支持分页)
-router.get('/followers', async (req: any, res) => {
+// [修改] 获取粉丝列表 (需要认证, 支持分页)
+router.get('/followers', authenticateApiKey, async (req: any, res) => {
   const { userId, page, limit } = req.query;
   if (!userId) {
-      return res.status(400).json({ error: "Missing userId query parameter" });
+    return res.status(400).json({ error: "Missing userId query parameter" });
   }
   try {
     const p = parseInt(page as string) || 1;
@@ -80,34 +80,34 @@ router.get('/followers', async (req: any, res) => {
 // GET /friends?page=1&limit=20  -> 获取自己的好友 (分页)
 // GET /friends?userId=xxx       -> 获取 xxx 的好友 (全量安全模式)
 router.get('/friends', authenticateApiKey, async (req: any, res) => {
-    try {
-      // 1. 确定目标用户
-      // 如果 URL 参数带了 userId 就查那个人，没带就查当前登录用户 (req.playerId)
-      const targetUserId = (req.query.userId as string) || req.playerId;
-  
-      // 2. 解析分页参数
-      // 如果不传，FollowService 会自动处理为"全量安全模式" (limit=1000)
-      const page = req.query.page ? parseInt(req.query.page as string) : undefined;
-      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
-  
-      // 3. 调用 Service
-      const result = await FollowService.getFriends(targetUserId, page, limit);
-  
-      res.json(result);
-    } catch (error: any) {
-      res.status(400).json({ error: error.message });
-    }
-  });
-
-// 访问好友农场
-router.get('/friends/:friendId/farm', authenticateApiKey, async (req: any, res) => {
   try {
-    const farm = await FollowService.getFriendFarm(req.playerId, req.params.friendId);
-    res.json(farm);
+    // 1. 确定目标用户
+    // 如果 URL 参数带了 userId 就查那个人，没带就查当前登录用户 (req.playerId)
+    const targetUserId = (req.query.userId as string) || req.playerId;
+
+    // 2. 解析分页参数
+    // 如果不传，FollowService 会自动处理为"全量安全模式" (limit=1000)
+    const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+    const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+
+    // 3. 调用 Service
+    const result = await FollowService.getFriends(targetUserId, page, limit);
+
+    res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
   }
 });
+
+// 访问好友农场
+// router.get('/friends/:friendId/farm', authenticateApiKey, async (req: any, res) => {
+//   try {
+//     const farm = await FollowService.getFriendFarm(req.playerId, req.params.friendId);
+//     res.json(farm);
+//   } catch (error: any) {
+//     res.status(400).json({ error: error.message });
+//   }
+// });
 
 // // 偷菜历史
 // router.get('/steal/history', authenticateApiKey, async (req: any, res) => {

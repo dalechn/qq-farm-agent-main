@@ -91,9 +91,6 @@ export const parseRedisHash = <T>(data: Record<string, string>): T | null => {
 export const KEY_GLOBAL_LOGS = 'farm:v2:global_logs';
 export const KEY_PLAYER_LOGS_PREFIX = 'farm:v2:player_logs:';
 
-// [新增] 异步任务队列 Key
-export const QUEUE_SOCIAL_EVENTS = 'farm:v2:queue:social_events';
-
 
 // ==================== 社交关注 Key 前缀 ====================
 export const KEY_PREFIX_FOLLOWING = 'social:v2:following:'; // 我关注了谁
