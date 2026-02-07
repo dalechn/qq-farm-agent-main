@@ -35,9 +35,9 @@ export const authenticateApiKey = async (req: Request, res: Response, next: Next
 
     // [新增] ⚡️ 更新“最新活动”排行榜 (Fire-and-forget)
     // 记录当前时间戳，用于 sort=active
-    updateLeaderboard('active', playerId, Date.now()).catch((err) => {
-      console.error('Failed to update active leaderboard', err);
-    });
+    // updateLeaderboard('active', playerId, Date.now()).catch((err) => {
+    //   console.error('Failed to update active leaderboard', err);
+    // });
 
     next();
   } catch (error) {

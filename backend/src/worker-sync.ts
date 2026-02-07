@@ -36,8 +36,11 @@ async function syncDirtyData() {
   // 1. 同步玩家 (Dirty Players)
   // -------------------------
   try {
-    // @ts-ignore
-    const playerIds = (await redisClient.sPop(KEYS.DIRTY_PLAYERS, BATCH_SIZE)) as unknown as string[];
+    // [修复] 增加类型兼容处理，防止 sPop 返回单个 string
+    const rawIds = await (redisClient as any).sPop(KEYS.DIRTY_PLAYERS, BATCH_SIZE);
+    const playerIds: string[] = Array.isArray(rawIds)
+      ? rawIds
+      : (rawIds ? [rawIds as string] : []);
 
     if (playerIds && playerIds.length > 0) {
       if (playerIds.length === BATCH_SIZE) hasMoreWork = true;
@@ -60,7 +63,7 @@ async function syncDirtyData() {
               ? new Date(Number(data.dogActiveUntil))
               : null,
           }
-        }).catch(err => console.error(`[Sync] Player ${playerId} failed:`, err.message));
+        }).catch((err: any) => console.error(`[Sync] Player ${playerId} failed:`, err.message));
       });
 
       await Promise.all(operations);
@@ -73,16 +76,25 @@ async function syncDirtyData() {
   // 2. 同步土地 (Dirty Lands)
   // -------------------------
   try {
-    // @ts-ignore
-    const dirtyKeys = (await redisClient.sPop(KEYS.DIRTY_LANDS, BATCH_SIZE)) as unknown as string[];
+    // [修复] 增加类型兼容处理，防止 sPop 返回单个 string
+    const rawKeys = await (redisClient as any).sPop(KEYS.DIRTY_LANDS, BATCH_SIZE);
+    const dirtyKeys: string[] = Array.isArray(rawKeys)
+      ? rawKeys
+      : (rawKeys ? [rawKeys as string] : []);
 
     if (dirtyKeys && dirtyKeys.length > 0) {
       if (dirtyKeys.length === BATCH_SIZE) hasMoreWork = true;
       console.log(`[Sync] Updating ${dirtyKeys.length} lands...`);
 
       const operations = dirtyKeys.map(async (keyStr) => {
-        const [playerId, posStr] = keyStr.split(':');
-        const position = parseInt(posStr);
+        const parts = keyStr.split(':');
+        // 防御性检查：确保 key 格式正确 (game:land:playerId:position)
+        if (parts.length < 4) return;
+
+        // 倒数第一位是 position，倒数第二位是 playerId
+        const position = parseInt(parts[parts.length - 1]);
+        const playerId = parts[parts.length - 2];
+
         const redisLandKey = KEYS.LAND(playerId, position);
 
         const raw = await redisClient.hGetAll(redisLandKey);
@@ -94,7 +106,7 @@ async function syncDirtyData() {
           where: { playerId_position: { playerId, position } },
           update: updateData,
           create: { playerId, position, ...updateData }
-        }).catch(err => console.error(`[Sync] Land ${keyStr} failed:`, err.message));
+        }).catch((err: any) => console.error(`[Sync] Land ${keyStr} failed:`, err.message));
       });
 
       await Promise.all(operations);

@@ -11,6 +11,15 @@ export class GameService {
   // ==========================================
   // [新增] 同步排行榜辅助函数
   // ==========================================
+  static async prewarmLeaderboards() {
+    console.log('🔥 Pre-warming leaderboards...');
+    const players = await prisma.player.findMany({ select: { id: true } });
+    for (const player of players) {
+      await this.ensurePlayerLoaded(player.id);
+    }
+    console.log(`✅ Leaderboards pre-warmed! (${players.length} players)`);
+  }
+
   private static async syncPlayerRank(playerId: string) {
     try {
       // 从 Redis Hash 中读取最新的 gold 和 level
@@ -22,6 +31,8 @@ export class GameService {
       if (levelStr) {
         await updateLeaderboard('level', playerId, Number(levelStr));
       }
+      // 每次同步都视为一次活跃
+      await updateLeaderboard('active', playerId, Date.now());
     } catch (e) {
       console.error(`Failed to sync rank for ${playerId}`, e);
     }
@@ -66,6 +77,7 @@ export class GameService {
     // 预热排行榜
     await updateLeaderboard('gold', player.id, player.gold);
     await updateLeaderboard('level', player.id, player.level);
+    await updateLeaderboard('active', player.id, Date.now());
 
     for (const land of player.lands) {
       const landKey = KEYS.LAND(player.id, land.position);

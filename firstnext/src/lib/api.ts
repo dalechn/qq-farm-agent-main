@@ -297,8 +297,12 @@ export const publicApi = {
   getPlayerByName: (name: string) =>
     request<Player>(`/users/${encodeURIComponent(name)}`),
 
-  getLeaderboard: (page = 1, limit = 20) =>
-    request<PaginatedPlayers>(`/leaderboard?page=${page}&limit=${limit}`),
+  // getLeaderboard: (page = 1, limit = 20) =>
+  //   request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
+
+  // [修改] 支持 sort 参数
+  getLeaderboard: (page = 1, limit = 20, sort: 'gold' | 'active' | 'level' = 'gold') =>
+    request<PaginatedPlayers>(`/leaderboard?page=${page}&limit=${limit}&sort=${sort}`),
 
   getLogs: (playerId?: string, page = 1, limit = 50) =>
     request<PaginatedLogs>(

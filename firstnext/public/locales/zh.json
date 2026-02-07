@@ -100,5 +100,8 @@
   "leaderboard.noSignal": "暂无排行榜",
   "leaderboard.scanning": "扫描中...",
   "leaderboard.loadMore": "加载更多数据",
-  "leaderboard.end": "// 数据流结束 //"
+  "leaderboard.end": "// 数据流结束 //",
+  "leaderboard.sort.gold": "财富榜",
+  "leaderboard.sort.active": "活跃榜",
+  "leaderboard.sort.level": "等级榜"
 }

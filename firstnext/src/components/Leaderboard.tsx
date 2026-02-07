@@ -3,35 +3,108 @@ import {
   Coins,
   Loader2,
   Users,
-  CheckCircle2
+  CheckCircle2,
+  ArrowUpDown
 } from "lucide-react";
-import { Virtuoso } from "react-virtuoso"; // [引入库]
+import { Virtuoso } from "react-virtuoso";
 import { type Player } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { type SortType } from "@/hooks/useGameData";
 
 interface LeaderboardStats {
   totalPlayers: number;
   harvestableCount: number;
 }
 
-// 通用面板标题栏 (复用)
-function PanelHeader({ title, icon: Icon, stats }: { title: string, icon: any, stats?: LeaderboardStats }) {
+import { useState, useRef, useEffect } from "react";
+
+// [修改] 增加 sort 属性
+function PanelHeader({
+  title,
+  icon: Icon,
+  stats,
+  sortBy,
+  onSortChange
+}: {
+  title: string,
+  icon: any,
+  stats?: LeaderboardStats,
+  sortBy?: SortType,
+  onSortChange?: (sort: SortType) => void
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const { t } = useI18n();
+
+  const options: { value: SortType; label: string }[] = [
+    { value: "gold", label: t('leaderboard.sort.gold') },
+    { value: "level", label: t('leaderboard.sort.level') },
+    { value: "active", label: t('leaderboard.sort.active') },
+  ];
+
+  const currentLabel = options.find(o => o.value === sortBy)?.label || options[0].label;
+
   return (
-    <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center px-3 gap-3 select-none">
-      <Icon className="w-4 h-4 text-stone-400" />
-      <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
-      {stats && (
-        <div className="flex items-center gap-3 ml-auto">
-          <div className="flex items-center gap-1.5 px-2 py-0.5 bg-stone-900 border border-stone-600">
-            <Users className="w-3 h-3 text-stone-400" />
-            <span className="font-mono font-bold text-white text-xs">{stats.totalPlayers}</span>
+    <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center px-3 gap-3 select-none justify-between z-20 relative">
+      <div className="flex items-center gap-3">
+        <Icon className="w-4 h-4 text-stone-400" />
+        <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
+      </div>
+
+      <div className="flex items-center gap-2">
+        {/* [新增] 自定义排序下拉框 */}
+        {onSortChange && (
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="flex items-center justify-between gap-2 bg-stone-900 border border-stone-600 px-2 py-0.5 min-w-[100px] hover:border-orange-500 transition-colors"
+            >
+              <span className="text-xs font-mono text-stone-300">{currentLabel}</span>
+              <ArrowUpDown className="w-3 h-3 text-stone-500" />
+            </button>
+
+            {isOpen && (
+              <div className="absolute right-0 top-full mt-1 w-full bg-stone-900 border border-stone-600 shadow-xl z-50 py-1">
+                {options.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      onSortChange(option.value);
+                      setIsOpen(false);
+                    }}
+                    className={`w-full text-left px-2 py-1.5 text-xs font-mono hover:bg-stone-800 transition-colors
+                      ${sortBy === option.value ? "text-orange-400 bg-stone-800/50" : "text-stone-400"}
+                    `}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 bg-stone-900 border border-stone-600">
-            <CheckCircle2 className="w-3 h-3 text-green-500" />
-            <span className="font-mono font-bold text-green-400 text-xs">{stats.harvestableCount}</span>
+        )}
+
+        {/* 统计数据 - 高度对齐 */}
+        {stats && (
+          <div className="flex items-center hidden xl:flex">
+            <div className="flex items-center gap-1.5 px-2 py-0.5 bg-stone-900 border border-stone-600">
+              <Users className="w-3 h-3 text-stone-400" />
+              <span className="font-mono font-bold text-white text-xs">{stats.totalPlayers}</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -44,7 +117,11 @@ interface LeaderboardProps {
   hasMore: boolean;
   onLoadMore: () => void;
   stats?: LeaderboardStats;
-  isHiddenOnMobile?: boolean; // 在移动端是否隐藏 (主页逻辑)
+  isHiddenOnMobile?: boolean;
+
+  // [新增] 排序 Props
+  sortBy?: SortType;
+  onSortChange?: (sort: SortType) => void;
 }
 
 export function Leaderboard({
@@ -55,40 +132,38 @@ export function Leaderboard({
   hasMore,
   onLoadMore,
   stats,
-  isHiddenOnMobile = false
+  isHiddenOnMobile = false,
+  sortBy,
+  onSortChange
 }: LeaderboardProps) {
 
   const { t } = useI18n();
 
-  // [移除] 之前的所有 IntersectionObserver 逻辑 (scrollContainer, observerTarget, useEffect...)
-
   return (
     <div className={`lg:w-80 flex-none border-b-2 lg:border-b-0 lg:border-r-2 border-stone-700 flex flex-col bg-stone-900/50 ${isHiddenOnMobile ? 'hidden lg:flex' : 'flex'} h-full`}>
-      <PanelHeader title={t('leaderboard.title')} icon={Trophy} stats={stats} />
+      {/* 传递排序参数 */}
+      <PanelHeader
+        title={t('leaderboard.title')}
+        icon={Trophy}
+        stats={stats}
+        sortBy={sortBy}
+        onSortChange={onSortChange}
+      />
 
-      {/* 列表容器：必须有 flex-1 min-h-0 以供 Virtuoso 计算高度 */}
       <div className="flex-1 min-h-0 bg-stone-900/50">
-        {players.length === 0 ? (
+        {players.length === 0 && !isFetchingMore ? (
           <div className="h-full flex items-center justify-center text-stone-600 text-xs font-mono">{t('leaderboard.noSignal')}</div>
         ) : (
           <Virtuoso
-            // [样式] 添加自定义滚动条样式，并占满高度
             className="custom-scrollbar"
             style={{ height: "100%" }}
-
             data={players}
-
-            // [核心] 触底加载更多
             endReached={() => {
               if (hasMore && !isFetchingMore) {
                 onLoadMore();
               }
             }}
-
-            // 预渲染高度
             overscan={200}
-
-            // 底部加载状态 / 结束提示
             components={{
               Footer: () => (
                 <div className="py-4 flex flex-col items-center justify-center min-h-[40px] border-t border-stone-800">
@@ -97,7 +172,6 @@ export function Leaderboard({
                       <Loader2 className="w-3 h-3 animate-spin" /> {t('leaderboard.scanning')}
                     </div>
                   ) : hasMore ? (
-                    // 理论上 endReached 会自动触发，但留一个按钮以防万一
                     <button onClick={onLoadMore} className="text-xs text-stone-500 hover:text-orange-400 font-mono border-b border-dotted border-stone-600 hover:border-orange-400">
                       {t('leaderboard.loadMore')}
                     </button>
@@ -107,12 +181,9 @@ export function Leaderboard({
                 </div>
               )
             }}
-
-            // 单个玩家行渲染
             itemContent={(index, player) => {
               return (
                 <div
-                  // Virtuoso 处理 key，这里不需要 key
                   onClick={() => onPlayerSelect(player)}
                   className={`
                       group relative p-3 cursor-pointer transition-all duration-100 flex items-center gap-3
@@ -122,9 +193,7 @@ export function Leaderboard({
                       : "hover:bg-stone-800/50"}
                     `}
                 >
-                  {/* 头像与角标 */}
                   <div className="relative flex-none">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={player.avatar}
                       alt="avt"
@@ -137,12 +206,12 @@ export function Leaderboard({
                     </div>
                   </div>
 
-                  {/* 详细信息 */}
                   <div className="flex flex-col flex-1 min-w-0 justify-center">
                     <div className="flex items-center justify-between">
                       <span className={`text-xs font-bold truncate ${selectedPlayer?.id === player.id ? 'text-orange-400' : 'text-stone-300'}`}>
                         {player.name}
                       </span>
+                      {/* 如果是活跃榜，可以显示一些不同的信息，比如最后活跃时间，目前简单保持一致 */}
                     </div>
 
                     <div className="flex items-center justify-between mt-1">

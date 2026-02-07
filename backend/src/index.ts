@@ -18,6 +18,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+import { GameService } from './services/GameService';
+
 // ==================== 注册路由 ====================
 app.use('/api', playerRoutes);
 app.use('/api', gameRoutes);
@@ -29,10 +31,10 @@ const PORT = process.env.PORT || 3001;
 
 async function start() {
   await connectRedis();
-  
+
   // 初始化或更新作物数据
   console.log('🌱 Initializing crops...');
-  
+
   // 循环更新或创建作物配置 (使用导入的 CROPS)
   for (const crop of CROPS) {
     await prisma.crop.upsert({
@@ -43,10 +45,13 @@ async function start() {
   }
   console.log(`✅ Crops data synced (${CROPS.length} types).`);
 
+  // 预热排行榜
+  await GameService.prewarmLeaderboards();
+
   const server = createServer(app);
   setupWebSocket(server);
 
-  
+
 
   server.listen(PORT, () => {
     console.log(`🚀 Backend running on http://localhost:${PORT}`);

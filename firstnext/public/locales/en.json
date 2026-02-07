@@ -100,5 +100,8 @@
   "leaderboard.noSignal": "NO INFO",
   "leaderboard.scanning": "SCANNING...",
   "leaderboard.loadMore": "LOAD MORE DATA",
-  "leaderboard.end": "// END OF STREAM //"
+  "leaderboard.end": "// END OF STREAM //",
+  "leaderboard.sort.gold": "WEALTH",
+  "leaderboard.sort.active": "ACTIVITY",
+  "leaderboard.sort.level": "LEVEL"
 }
