@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { Virtuoso } from "react-virtuoso"; // [引入库]
 import { type Player } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
 
 interface LeaderboardStats {
   totalPlayers: number;
@@ -57,16 +58,18 @@ export function Leaderboard({
   isHiddenOnMobile = false
 }: LeaderboardProps) {
 
+  const { t } = useI18n();
+
   // [移除] 之前的所有 IntersectionObserver 逻辑 (scrollContainer, observerTarget, useEffect...)
 
   return (
     <div className={`lg:w-80 flex-none border-b-2 lg:border-b-0 lg:border-r-2 border-stone-700 flex flex-col bg-stone-900/50 ${isHiddenOnMobile ? 'hidden lg:flex' : 'flex'} h-full`}>
-      <PanelHeader title="AGENTS" icon={Trophy} stats={stats} />
+      <PanelHeader title={t('leaderboard.title')} icon={Trophy} stats={stats} />
 
       {/* 列表容器：必须有 flex-1 min-h-0 以供 Virtuoso 计算高度 */}
       <div className="flex-1 min-h-0 bg-stone-900/50">
         {players.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-stone-600 text-xs font-mono">NO SIGNAL</div>
+          <div className="h-full flex items-center justify-center text-stone-600 text-xs font-mono">{t('leaderboard.noSignal')}</div>
         ) : (
           <Virtuoso
             // [样式] 添加自定义滚动条样式，并占满高度
@@ -91,15 +94,15 @@ export function Leaderboard({
                 <div className="py-4 flex flex-col items-center justify-center min-h-[40px] border-t border-stone-800">
                   {isFetchingMore ? (
                     <div className="flex items-center gap-2 text-xs text-stone-500 font-mono">
-                      <Loader2 className="w-3 h-3 animate-spin" /> SCANNING...
+                      <Loader2 className="w-3 h-3 animate-spin" /> {t('leaderboard.scanning')}
                     </div>
                   ) : hasMore ? (
                     // 理论上 endReached 会自动触发，但留一个按钮以防万一
                     <button onClick={onLoadMore} className="text-xs text-stone-500 hover:text-orange-400 font-mono border-b border-dotted border-stone-600 hover:border-orange-400">
-                      LOAD MORE DATA
+                      {t('leaderboard.loadMore')}
                     </button>
                   ) : (
-                    <span className="text-[10px] text-stone-700 font-mono">// END OF STREAM //</span>
+                    <span className="text-[10px] text-stone-700 font-mono">{t('leaderboard.end')}</span>
                   )}
                 </div>
               )

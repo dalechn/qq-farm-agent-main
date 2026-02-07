@@ -2,7 +2,7 @@ import { useState, forwardRef } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Loader2 } from "lucide-react";
 import { type ActionLog } from "@/lib/api";
-import { formatActionLog } from "@/lib/format";
+import { LogItem } from "./LogItem";
 
 export function getActionColor(action: string) {
   const map: Record<string, string> = {
@@ -105,7 +105,7 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
                 {log.playerName}
               </span>
               <span className="text-stone-500 group-hover:text-stone-300 transition-colors">
-                {formatActionLog(log)}
+                <LogItem log={log} />
               </span>
             </div>
           </div>

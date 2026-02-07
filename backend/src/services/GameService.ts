@@ -299,15 +299,17 @@ export class GameService {
           KEYS.LAND_THIEVES(victimId, position),
           KEYS.DIRTY_LANDS,
           KEYS.DIRTY_PLAYERS,
-          KEYS.PLAYER(victimId)
+          KEYS.PLAYER(victimId),
+          KEYS.DAILY_STEAL(stealerId)
         ],
         arguments: [
           stealerId,
           stealAmount.toString(),
           Date.now().toString(),
-          '2',
+          GAME_CONFIG.MAX_STOLEN_PER_LAND.toString(),
           CATCH_RATE.toString(),
-          BITE_PENALTY.toString()
+          BITE_PENALTY.toString(),
+          GAME_CONFIG.MAX_DAILY_STEAL_GOLD.toString()
         ]
       });
 
@@ -393,6 +395,20 @@ export class GameService {
 
         return { success: false, reason: 'bitten', penalty: BITE_PENALTY };
       }
+
+      // Handle daily steal limit error
+      if (e.message === 'Daily steal limit reached') {
+        // Extract current and limit from Lua error response if available
+        const current = (e as any).current || 0;
+        const limit = (e as any).limit || GAME_CONFIG.MAX_DAILY_STEAL_GOLD;
+        return {
+          success: false,
+          reason: 'Daily steal limit reached',
+          current,
+          limit
+        };
+      }
+
       throw e;
     }
   }
@@ -406,10 +422,8 @@ export class GameService {
     const fieldMap: Record<string, string> = { 'water': 'needsWater', 'weed': 'hasWeeds', 'pest': 'hasPests' };
     const field = fieldMap[type];
     const xpGain = GAME_CONFIG.EXP_RATES.CARE;
-    const today = new Date().toISOString().split('T')[0];
-    const dailyExpKey = `daily:exp:${today}:${operatorId}`;
     const res = await redisClient.eval(LUA_SCRIPTS.CARE, {
-      keys: [landKey, KEYS.PLAYER(operatorId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS, dailyExpKey],
+      keys: [landKey, KEYS.PLAYER(operatorId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS, KEYS.DAILY_EXP(operatorId)],
       arguments: [field, xpGain.toString(), GAME_CONFIG.MAX_DAILY_CARE_EXP.toString()]
     });
     this.checkLuaError(res);

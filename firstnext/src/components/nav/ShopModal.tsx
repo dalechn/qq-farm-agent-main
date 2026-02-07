@@ -16,13 +16,7 @@ import { type Crop, type ShopData } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { IconSeed, CROP_ICONS } from "@/components/ui/CropIcons";
 
-// 土地类型中文映射
-const LAND_TYPE_NAMES: Record<string, string> = {
-  normal: 'Normal',
-  red: 'Red Soil',
-  black: 'Black Soil',
-  gold: 'Gold',
-};
+
 
 // 土地类型颜色映射（用于标签）
 const LAND_TYPE_COLORS: Record<string, string> = {
@@ -97,7 +91,7 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
             `}
           >
             <Sprout className="w-4 h-4" />
-            Seeds
+            {t('shop.tab.seeds')}
           </button>
 
           <button
@@ -111,7 +105,7 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
             `}
           >
             <Hammer className="w-4 h-4" />
-            Tools & Items
+            {t('shop.tab.items')}
           </button>
         </div>
 
@@ -120,7 +114,7 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
           {!shopData ? (
             <div className="flex flex-col items-center justify-center h-full text-stone-500">
               <RefreshCw className="w-8 h-8 animate-spin mb-4 text-orange-500" />
-              <span>Loading shop data...</span>
+              <span>{t('shop.loading')}</span>
             </div>
           ) : (
             <>
@@ -144,8 +138,13 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                             <div className="flex-1 flex flex-col justify-between">
                               <div>
                                 <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide leading-tight">{crop.name}</h3>
-                                <div className={`inline-block mt-1 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${landTypeColor}`}>
-                                  {LAND_TYPE_NAMES[crop.requiredLandType || 'normal']}
+                                <div className="flex items-center gap-2 mt-1">
+                                  <div className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${landTypeColor}`}>
+                                    {t(`land.${crop.requiredLandType || 'normal'}`)}
+                                  </div>
+                                  <div className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border bg-stone-800 text-purple-300 border-stone-600 flex items-center gap-1">
+                                    <span>LV.{crop.requiredLevel || 1}</span>
+                                  </div>
                                 </div>
                               </div>
                             </div>
@@ -154,14 +153,14 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                           {/* Pricing */}
                           <div className="grid grid-cols-2 gap-px bg-[#1c1917] border-y border-[#44403c]">
                             <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">Seed Price</span>
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('shop.seedPrice')}</span>
                               <span className="text-orange-300 font-bold text-xs flex items-center gap-1">
                                 <Coins className="w-3 h-3 text-orange-500/50" />
                                 {crop.seedPrice}
                               </span>
                             </div>
                             <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">Sell Price</span>
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('shop.sellPrice')}</span>
                               <span className="text-green-300 font-bold text-xs flex items-center gap-1">
                                 <Coins className="w-3 h-3 text-green-500/50" />
                                 {crop.sellPrice}
@@ -172,41 +171,42 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                           {/* Stats Grid */}
                           <div className="grid grid-cols-3 gap-px bg-[#1c1917]">
                             <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">Yield</span>
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('shop.yield')}</span>
                               <span className="text-yellow-300 font-bold text-xs flex items-center gap-1">
                                 <Layers className="w-3 h-3 text-yellow-500/50" />
                                 {crop.yield || 1}
                               </span>
                             </div>
                             <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">Time</span>
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('shop.time')}</span>
                               <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
                                 <Clock className="w-3 h-3 text-stone-500" />
                                 {crop.matureTime}s
                               </span>
                             </div>
                             <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">EXP</span>
+                              <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('shop.exp')}</span>
                               <span className="text-purple-300 font-bold text-xs flex items-center gap-1">
                                 <TrendingUp className="w-3 h-3 text-purple-500/50" />
                                 +{crop.exp}
                               </span>
                             </div>
+
                           </div>
 
                           {/* Multi-Harvest Info */}
-                          <div className="p-2 bg-[#292524] flex items-center justify-between text-[10px]">
+                          <div className="p-2 bg-[#292524] flex items-center justify-between text-[10px] border-t border-[#44403c]">
                             <div className="flex items-center gap-1.5 text-stone-400">
                               <RefreshCw className="w-3 h-3" />
-                              <span>{crop.maxHarvests} harvests</span>
+                              <span>{crop.maxHarvests} {t('shop.harvests')}</span>
                             </div>
                             {crop.regrowTime > 0 ? (
                               <div className="flex items-center gap-1 text-emerald-500">
                                 <Sprout className="w-3 h-3" />
-                                <span>Regrow: {crop.regrowTime}s</span>
+                                <span>{t('shop.regrow')}: {crop.regrowTime}s</span>
                               </div>
                             ) : (
-                              <span className="text-stone-600">One-time</span>
+                              <span className="text-stone-600">{t('shop.oneTime')}</span>
                             )}
                           </div>
                         </div>
@@ -228,21 +228,21 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                         </div>
                         <div className="flex-1 flex flex-col justify-between">
                           <div>
-                            <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide">Guard Dog</h3>
-                            <p className="text-[10px] text-stone-400 mt-1">Protects your farm from thieves</p>
+                            <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide">{t('shop.dog.title')}</h3>
+                            <p className="text-[10px] text-stone-400 mt-1">{t('shop.dog.description')}</p>
                           </div>
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-px bg-[#1c1917] border-y border-[#44403c]">
                         <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                          <span className="text-[9px] text-stone-500 uppercase">Buy Dog</span>
+                          <span className="text-[9px] text-stone-500 uppercase">{t('shop.dog.buy')}</span>
                           <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
                             <Coins className="w-3 h-3 text-blue-500/50" />
                             {shopData.dog.price}
                           </span>
                         </div>
                         <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                          <span className="text-[9px] text-stone-500 uppercase">Dog Food</span>
+                          <span className="text-[9px] text-stone-500 uppercase">{t('shop.dog.food')}</span>
                           <span className="text-green-300 font-bold text-xs flex items-center gap-1">
                             <Coins className="w-3 h-3 text-green-500/50" />
                             {shopData.dog.foodPrice}
@@ -250,9 +250,9 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                         </div>
                       </div>
                       <div className="p-2 bg-[#292524] text-[10px] text-stone-400 space-y-0.5">
-                        <div>Catch Rate: {shopData.dog.catchRate}%</div>
-                        <div>Food Duration: {Math.floor(shopData.dog.foodDuration / 3600)}h</div>
-                        <div>Bite Penalty: {shopData.dog.bitePenalty} coins</div>
+                        <div>{t('shop.dog.catchRate')}: {shopData.dog.catchRate}%</div>
+                        <div>{t('shop.dog.foodDuration')}: {Math.floor(shopData.dog.foodDuration / 3600)}h</div>
+                        <div>{t('shop.dog.bitePenalty')}: {shopData.dog.bitePenalty} coins</div>
                       </div>
                     </div>
 
@@ -266,20 +266,20 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                           <div className="flex-1 flex flex-col justify-between">
                             <div>
                               <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide">{fertilizer.name}</h3>
-                              <p className="text-[10px] text-stone-400 mt-1">Speed up crop growth</p>
+                              <p className="text-[10px] text-stone-400 mt-1">{t('shop.fertilizer.description')}</p>
                             </div>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-px bg-[#1c1917] border-y border-[#44403c]">
                           <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                            <span className="text-[9px] text-stone-500 uppercase">Price</span>
+                            <span className="text-[9px] text-stone-500 uppercase">{t('shop.fertilizer.price')}</span>
                             <span className="text-green-300 font-bold text-xs flex items-center gap-1">
                               <Coins className="w-3 h-3 text-green-500/50" />
                               {fertilizer.price}
                             </span>
                           </div>
                           <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                            <span className="text-[9px] text-stone-500 uppercase">Time Saved</span>
+                            <span className="text-[9px] text-stone-500 uppercase">{t('shop.fertilizer.timeSaved')}</span>
                             <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
                               <Clock className="w-3 h-3 text-blue-500/50" />
                               {Math.floor(fertilizer.reduceSeconds / 3600)}h
@@ -298,10 +298,10 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
         {/* Footer */}
         <div className="p-3 bg-[#292524] border-t-2 border-[#44403c] flex justify-between items-center text-[10px] text-stone-500">
           <div className="flex gap-4">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full"></span> Online</span>
-            <span>Refresh: AUTO</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full"></span> {t('footer.online')}</span>
+            <span>{t('footer.refresh')}</span>
           </div>
-          <span className="font-mono opacity-50">Prices subject to change</span>
+          <span className="font-mono opacity-50">{t('footer.prices')}</span>
         </div>
       </div>
     </div>

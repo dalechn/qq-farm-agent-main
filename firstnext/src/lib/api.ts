@@ -87,6 +87,7 @@ export interface Crop {
   exp: number;
   yield: number;
   requiredLandType?: string;
+  requiredLevel?: number;
   maxHarvests: number;
   regrowTime: number;
 }

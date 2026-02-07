@@ -20,6 +20,7 @@ import { PatrolDog } from "@/components/PatrolDog";
 import { DebugSidebar } from "@/components/DebugSidebar";
 import { UserListSidebar } from "@/components/UserListSidebar";
 import { useGame } from "@/context/GameContext";
+import { useI18n } from "@/lib/i18n";
 
 // [新增] 升级经验表 (与后端保持一致)
 const LEVEL_UP_EXP = [
@@ -98,6 +99,7 @@ export function FarmViewport({
 }: FarmViewportProps) {
   const router = useRouter();
   const { myPlayer } = useGame();
+  const { t } = useI18n();
 
   const isLoading = isSearching || isPlayerLoading;
   const [showDebugSidebar, setShowDebugSidebar] = useState(false);
@@ -175,7 +177,7 @@ export function FarmViewport({
       />
 
       <PanelHeader
-        title="VIEWPORT"
+        title={t('viewport.title')}
         icon={Sprout}
         showBack={showOnMobile}
         onBack={() => router.push('/')}
@@ -193,7 +195,7 @@ export function FarmViewport({
               title="Refresh Data"
             >
               <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">REFRESH</span>
+              <span className="hidden sm:inline">{t('viewport.refresh')}</span>
             </button>
 
             <button
@@ -201,7 +203,7 @@ export function FarmViewport({
               className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono border transition-all bg-stone-900 border-stone-700 text-stone-500 hover:text-stone-300 hover:border-orange-500 hover:text-orange-500`}
             >
               <Bug className="w-3 h-3" />
-              <span>DEBUG</span>
+              <span>{t('viewport.debug')}</span>
             </button>
           </div>
         }
@@ -210,7 +212,7 @@ export function FarmViewport({
       {isLoading ? (
         <div className="h-full flex flex-col items-center justify-center text-stone-600 font-mono bg-[#1c1917] animate-pulse">
           <Loader2 className="w-8 h-8 animate-spin mb-2 text-orange-500" />
-          <p>FETCHING DATA...</p>
+          <p>{t('viewport.fetching')}</p>
         </div>
       ) : selectedPlayer ? (
         <div className="flex-1 flex flex-col min-h-0 bg-[#292524] overflow-hidden">
@@ -258,7 +260,7 @@ export function FarmViewport({
                     {/* [修改] YOU 标签样式优化 */}
                     {isOwner && (
                       <span className="text-[9px] leading-none py-0.5 bg-green-900/80 text-green-300 px-1.5 rounded-sm border border-green-700/50 shadow-sm font-mono tracking-wide">
-                        YOU
+                        {t('viewport.you')}
                       </span>
                     )}
                   </div>
@@ -297,7 +299,7 @@ export function FarmViewport({
                         // }}
                         className="hover:text-orange-400 transition-colors"
                       >
-                        <span className="text-white font-bold">{selectedPlayer._count?.following || 0}</span> <span className="text-[8px] uppercase">Following</span>
+                        <span className="text-white font-bold">{selectedPlayer._count?.following || 0}</span> <span className="text-[8px] uppercase">{t('viewport.following')}</span>
                       </button>
                       <span className="w-px h-2 bg-stone-700"></span>
                       <button
@@ -308,14 +310,14 @@ export function FarmViewport({
                         // }}
                         className="hover:text-orange-400 transition-colors"
                       >
-                        <span className="text-white font-bold">{selectedPlayer._count?.followers || 0}</span> <span className="text-[8px] uppercase">Followers</span>
+                        <span className="text-white font-bold">{selectedPlayer._count?.followers || 0}</span> <span className="text-[8px] uppercase">{t('viewport.followers')}</span>
                       </button>
 
                       <span className="w-px h-2 bg-stone-700"></span>
 
 
                       <span className="text-stone-500">
-                        <span className="text-white">Joined</span> {formatJoinDate(selectedPlayer.createdAt)}
+                        <span className="text-white">{t('viewport.joined')}</span> {formatJoinDate(selectedPlayer.createdAt)}
                       </span>
                     </div>
                   </div>
@@ -326,7 +328,7 @@ export function FarmViewport({
                 <div>
                   <div className="flex items-center justify-end gap-1.5 text-[10px] text-yellow-600 uppercase font-bold mb-1 font-mono tracking-widest">
                     <Coins className="w-3 h-3" />
-                    <span>Credits</span>
+                    <span>{t('viewport.credits')}</span>
                   </div>
                   <div className="text-3xl font-mono font-bold text-yellow-500 drop-shadow-[2px_2px_0_rgba(0,0,0,0.8)]">
                     {selectedPlayer.gold?.toLocaleString() || 0}
@@ -349,23 +351,24 @@ export function FarmViewport({
             <div className="flex items-center justify-between mb-4 relative z-10 overflow-x-auto pb-2 sm:pb-0">
               <div className="flex items-center gap-2 text-xs font-bold text-[#78716c] uppercase tracking-widest font-mono flex-shrink-0">
                 <Leaf className="w-3 h-3" />
-                <span>Field Matrix</span>
+                <span>{t('viewport.fieldMatrix')}</span>
               </div>
 
               <div className="flex gap-2 flex-nowrap">
-                <MiniStat label="IDLE" value={selectedPlayer.lands.filter((l) => l.status === "empty").length} color="text-stone-300" bg="bg-stone-700" />
-                <MiniStat label="GROW" value={selectedPlayer.lands.filter((l) => l.status === "planted").length} color="text-blue-200" bg="bg-blue-900" />
+
+                <MiniStat label={t('status.idle')} value={selectedPlayer.lands.filter((l) => l.status === "empty").length} color="text-stone-300" bg="bg-stone-700" />
+                <MiniStat label={t('status.grow')} value={selectedPlayer.lands.filter((l) => l.status === "planted").length} color="text-blue-200" bg="bg-blue-900" />
                 <MiniStat
-                  label="CARE"
+                  label={t('status.care')}
                   value={selectedPlayer.lands.filter((l) => l.status !== "withered" && (l.hasWeeds || l.hasPests || l.needsWater)).length}
                   color="text-yellow-200"
                   bg="bg-yellow-900"
                 />
-                <MiniStat label="RIPE" value={selectedPlayer.lands.filter((l) => l.status === "harvestable").length} color="text-green-200" bg="bg-green-900" />
-                <MiniStat label="DEAD" value={selectedPlayer.lands.filter((l) => l.status === "withered").length} color="text-red-200" bg="bg-red-900" />
+                <MiniStat label={t('status.ripe')} value={selectedPlayer.lands.filter((l) => l.status === "harvestable").length} color="text-green-200" bg="bg-green-900" />
+                <MiniStat label={t('status.dead')} value={selectedPlayer.lands.filter((l) => l.status === "withered").length} color="text-red-200" bg="bg-red-900" />
 
                 <MiniStat
-                  label="SEC"
+                  label={t('status.sec')}
                   value={secConfig.value}
                   color={secConfig.color}
                   bg={secConfig.bg}
@@ -398,7 +401,7 @@ export function FarmViewport({
       ) : (
         <div className="h-full flex flex-col items-center justify-center text-stone-600 font-mono bg-[#1c1917]">
           <Sprout className="w-16 h-16 opacity-10 mb-4" />
-          <p className="tracking-widest text-xs">SELECT A UNIT TO INSPECT</p>
+          <p className="tracking-widest text-xs">{t('viewport.selectUnit')}</p>
         </div>
       )}
     </section>

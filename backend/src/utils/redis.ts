@@ -33,16 +33,22 @@ export default redisClient;
 
 // ==================== 新增：排行榜 (ZSET) ====================
 
-export const updateLeaderboard = async (type: 'gold' | 'level', playerId: string, score: number) => {
+// [修改] 扩展类型定义，增加 'active'
+export const updateLeaderboard = async (type: 'gold' | 'level' | 'active', playerId: string, score: number) => {
   const key = `leaderboard:${type}`;
-  // ZADD leaderboard:gold 1000 "player_id_123"
+  // ZADD leaderboard:active 1700000000 "player_id"
   await redisClient.zAdd(key, { score, value: playerId });
 };
 
-export const getTopPlayers = async (type: 'gold' | 'level', limit: number = 10) => {
+// [修改] 扩展类型定义
+export const getTopPlayers = async (type: 'gold' | 'level' | 'active', page: number = 1, limit: number = 20) => {
   const key = `leaderboard:${type}`;
-  // ZREVRANGE: 按分数从高到低排序
-  return await redisClient.zRangeWithScores(key, 0, limit - 1, { REV: true });
+  const start = (page - 1) * limit;
+  const end = start + limit - 1;
+
+  // ZREVRANGE: 按分数从高到低排序 (Active=时间戳越大越新; Gold=越大越富有)
+  // 返回带分数的列表，分数对 active 来说就是时间戳
+  return await redisClient.zRangeWithScores(key, start, end, { REV: true });
 };
 
 // ================= Key 常量定义 =================
@@ -59,6 +65,16 @@ export const KEYS = {
   // Set: 脏数据集合 (Worker 监控这些 Key 进行写库)
   DIRTY_PLAYERS: 'dirty:players',
   DIRTY_LANDS: 'dirty:lands',
+
+  // Daily tracking keys
+  DAILY_STEAL: (playerId: string, date?: string) => {
+    const today = date || new Date().toISOString().split('T')[0];
+    return `daily:steal:${today}:${playerId}`;
+  },
+  DAILY_EXP: (playerId: string, date?: string) => {
+    const today = date || new Date().toISOString().split('T')[0];
+    return `daily:exp:${today}:${playerId}`;
+  },
 };
 
 // ================= 辅助函数 =================

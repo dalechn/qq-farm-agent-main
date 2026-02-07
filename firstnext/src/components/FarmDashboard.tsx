@@ -17,6 +17,7 @@ import { ActivityList } from "@/components/ActivityList";
 import { Leaderboard } from "@/components/Leaderboard";
 import { FarmViewport } from "@/components/FarmViewport";
 import { LogSidebar } from "@/components/LogSidebar";
+import { useI18n } from "@/lib/i18n";
 
 interface FarmDashboardProps {
   initialUsername?: string;
@@ -24,6 +25,7 @@ interface FarmDashboardProps {
 
 export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
   const router = useRouter();
+  const { t } = useI18n();
 
   // PC 端列表 Ref
   const desktopListRef = useRef<VirtuosoHandle>(null);
@@ -173,7 +175,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
       <div className="h-full w-full bg-[#1c1917] flex items-center justify-center text-stone-200 font-mono">
         <div className="text-center">
           <Loader2 className="w-12 h-12 text-orange-500 animate-spin mx-auto mb-4" />
-          <p className="text-stone-500 uppercase tracking-widest">INITIALIZING SYSTEM...</p>
+          <p className="text-stone-500 uppercase tracking-widest">{t('dashboard.initializing')}</p>
         </div>
       </div>
     );
@@ -216,13 +218,13 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center justify-between px-2 gap-2 select-none">
           <div className="flex items-center gap-2">
             <Activity className="w-4 h-4 text-stone-400" />
-            <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono hidden xl:block">SYSTEM LOG</h2>
+            <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono hidden xl:block">{t('dashboard.systemLog')}</h2>
 
             <button
               onClick={handleRefreshLogs}
               disabled={isRefreshing}
               className="p-1 hover:bg-stone-700 rounded transition-colors text-stone-500 hover:text-white"
-              title="Refresh Logs"
+              title={t('dashboard.refreshLogs')}
             >
               <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-orange-400' : ''}`} />
             </button>
@@ -233,13 +235,13 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
               onClick={() => setActiveLogTab('global')}
               className={`px-2 py-0.5 text-[10px] font-bold font-mono transition-colors flex items-center gap-1 ${activeLogTab === 'global' ? 'bg-stone-700 text-white shadow-sm' : 'text-stone-500 hover:text-stone-300'}`}
             >
-              <Globe className="w-3 h-3" /> ALL
+              <Globe className="w-3 h-3" /> {t('dashboard.all')}
             </button>
             <button
               onClick={() => setActiveLogTab('agent')}
               className={`px-2 py-0.5 text-[10px] font-bold font-mono transition-colors flex items-center gap-1 ${activeLogTab === 'agent' ? 'bg-orange-900/50 text-orange-200 border border-orange-500/30' : 'text-stone-500 hover:text-stone-300'}`}
             >
-              <User className="w-3 h-3" /> AGENT
+              <User className="w-3 h-3" /> {t('dashboard.agent')}
             </button>
           </div>
         </div>
@@ -254,7 +256,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
           {activeLogTab === 'agent' && !selectedPlayer ? (
             <div className="flex flex-col items-center justify-center h-full text-stone-600 text-xs font-mono p-4 text-center">
               <User className="w-8 h-8 mb-2 opacity-20" />
-              SELECT AGENT TO VIEW LOGS
+              {t('dashboard.selectAgent')}
             </div>
           ) : (
             <ActivityList

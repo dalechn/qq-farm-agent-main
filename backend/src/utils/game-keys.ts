@@ -34,6 +34,8 @@ export const GAME_CONFIG = {
 
   // Service-level constants
   MAX_DAILY_CARE_EXP: 1000,
+  MAX_DAILY_STEAL_GOLD: 1000, // Maximum gold that can be stolen per day
+  MAX_STOLEN_PER_LAND: 2, // Maximum times a land can be stolen
   DISASTER_CHECK_INTERVAL: 60 * 1000 * 1, // 1 minute in milliseconds
   REDIS_PLAYER_CACHE_TTL: 60 * 60 * 24 * 3, // 3 days in seconds
 

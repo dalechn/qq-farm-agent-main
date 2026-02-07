@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Hand, Skull, Droplets, Bug, Sprout, Shovel, Zap, Lock } from "lucide-react";
 import { Land, plant, harvest, careLand, shovelLand, useFertilizer, steal } from "../lib/api";
 import { useToast } from "./ui/Toast";
+import { useI18n } from "@/lib/i18n";
 import {
   IconSprout,
   IconGrowing,
@@ -37,6 +38,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const { t } = useI18n();
 
   // [修复] 兼容后端可能返回的 cropId 或 cropType
   // @ts-ignore
@@ -108,9 +110,9 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
         } else if (land.status === 'harvestable' || isMature) {
           const res = await harvest(land.position);
           if (res.healthLoss && res.healthLoss > 0) {
-            toast(`Harvested ${cropName}! +${res.gold} Gold (Lost ${res.healthLoss} due to poor health)`, 'success');
+            toast(t('toast.harvestedWithLoss', { crop: cropName, gold: res.gold, loss: res.healthLoss }), 'success');
           } else {
-            toast(`Harvested ${cropName}! +${res.gold} Gold`, 'success');
+            toast(t('toast.harvested', { crop: cropName, gold: res.gold }), 'success');
           }
           onUpdate?.();
         } else if (land.status === 'withered') {
@@ -124,13 +126,19 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
           // 偷菜
           const res = await steal(ownerId, land.position);
           if (res.success) {
-            toast(`Stole ${res.stolen.amount} ${res.stolen.cropName}!`, 'steal');
+            toast(t('toast.stolen', { amount: res.stolen.amount, crop: res.stolen.cropName }), 'steal');
             onUpdate?.();
           } else if (res.penalty) {
-            toast(`Bitten by dog! Lost ${res.penalty} gold.`, 'error');
+            toast(t('toast.bittenByDog', { penalty: res.penalty }), 'error');
             onUpdate?.();
+          } else if (res.reason === 'Daily steal limit reached') {
+            const current = (res as any).current || 0;
+            const limit = (res as any).limit || 1000;
+            toast(t('toast.dailyLimitReached', { current, limit }), 'error');
+          } else if (res.reason === 'Already stolen by you') {
+            toast(t('toast.alreadyStolen'), 'error');
           } else {
-            toast(res.reason || 'Failed to steal', 'error');
+            toast(res.reason || t('toast.actionFailed'), 'error');
           }
         } else {
           // 访客点击其他状态不做操作 (防止误把自己的种子种别人地里)
@@ -140,7 +148,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
 
     } catch (error: any) {
       console.error('Action failed:', error);
-      toast(error.message || 'Action failed', 'error');
+      toast(error.message || t('toast.actionFailed'), 'error');
     } finally {
       setLoading(false);
     }
@@ -156,7 +164,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       onUpdate?.();
     } catch (error: any) {
       console.error('Care failed:', error);
-      toast(error.message || 'Care failed', 'error');
+      toast(error.message || t('toast.careFailed'), 'error');
     } finally {
       setLoading(false);
     }
@@ -173,7 +181,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       onUpdate?.(); // 铲除成功 -> 刷新
     } catch (error: any) {
       console.error('Shovel failed:', error);
-      toast(error.message || 'Shovel failed', 'error');
+      toast(error.message || t('toast.shovelFailed'), 'error');
     } finally {
       setLoading(false);
     }
@@ -189,7 +197,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       onUpdate?.(); // 施肥成功 -> 刷新
     } catch (error) {
       console.error('Fertilizer failed:', error);
-      toast('Fertilizer failed: No inventory', 'error');
+      toast(t('toast.fertilizerFailed'), 'error');
     } finally {
       setLoading(false);
     }

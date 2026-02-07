@@ -200,6 +200,7 @@ export const LUA_SCRIPTS = {
     local dirtyLands = KEYS[4]
     local dirtyPlayers = KEYS[5]
     local victimKey = KEYS[6]
+    local dailyStealKey = KEYS[7]
 
     local stealerId = ARGV[1]
     local goldGain = tonumber(ARGV[2])
@@ -207,8 +208,15 @@ export const LUA_SCRIPTS = {
     local maxStolen = tonumber(ARGV[4])
     local dogCatchRate = tonumber(ARGV[5])
     local dogPenalty = tonumber(ARGV[6])
+    local maxDailySteal = tonumber(ARGV[7])
 
-    -- 1. 🐶 检查狗
+    -- 1. 检查每日偷取上限
+    local currentDailySteal = tonumber(redis.call('GET', dailyStealKey) or '0')
+    if currentDailySteal + goldGain > maxDailySteal then
+       return {err = 'Daily steal limit reached', current = currentDailySteal, limit = maxDailySteal}
+    end
+
+    -- 2. 🐶 检查狗
     local dogTime = tonumber(redis.call('HGET', victimKey, 'dogActiveUntil') or '0')
     if now < dogTime then
        if math.random(1, 100) <= dogCatchRate then
@@ -218,7 +226,7 @@ export const LUA_SCRIPTS = {
        end
     end
 
-    -- 2. 检查土地
+    -- 3. 检查土地
     local landInfo = redis.call('HMGET', landKey, 'status', 'matureAt', 'stolenCount')
     local status = landInfo[1]
     local matureAt = tonumber(landInfo[2] or '0')
@@ -233,12 +241,16 @@ export const LUA_SCRIPTS = {
 
     if redis.call('SISMEMBER', thievesKey, stealerId) == 1 then return {err = 'Already stolen by you'} end
 
-    -- 3. 执行偷窃
+    -- 4. 执行偷窃
     redis.call('HINCRBY', landKey, 'stolenCount', 1)
     redis.call('SADD', thievesKey, stealerId)
     redis.call('EXPIRE', thievesKey, 172800) 
 
     redis.call('HINCRBYFLOAT', stealerKey, 'gold', goldGain)
+
+    -- 5. 更新每日偷取计数
+    redis.call('INCRBY', dailyStealKey, goldGain)
+    redis.call('EXPIRE', dailyStealKey, 172800)
 
     redis.call('SADD', dirtyLands, landKey)
     redis.call('SADD', dirtyPlayers, stealerKey)
@@ -483,29 +495,46 @@ export const LUA_SCRIPTS = {
 
     for i = 0, (maxLands - 1) do
       local landKey = "game:land:" .. playerId .. ":" .. i
-      local info = redis.call('HMGET', landKey, 'status', 'matureAt')
+      -- [新增] 额外获取 plantedAt
+      local info = redis.call('HMGET', landKey, 'status', 'matureAt', 'plantedAt')
       local status = info[1]
       local matureAt = tonumber(info[2] or '0')
+      local plantedAt = tonumber(info[3] or '0')
 
       if status == 'planted' then
         local changed = false
         
+        -- 优先检查成熟
         if now >= matureAt then
             redis.call('HSET', landKey, 'status', 'harvestable')
             changed = true
-        end
-        
-        if probWeed > 0 and math.random(1, 100) <= probWeed then
-           redis.call('HSET', landKey, 'hasWeeds', 'true')
-           changed = true
-        end
-        if probPest > 0 and math.random(1, 100) <= probPest then
-           redis.call('HSET', landKey, 'hasPests', 'true')
-           changed = true
-        end
-        if probWater > 0 and math.random(1, 100) <= probWater then
-           redis.call('HSET', landKey, 'needsWater', 'true')
-           changed = true
+        else
+            -- 仅当未成熟时检查灾害
+            -- 计算生长进度
+            local totalDuration = matureAt - plantedAt
+            local passed = now - plantedAt
+            local isProtected = false
+
+            -- [新增] 保护机制：如果生长进度小于 20%，则处于"幼苗保护期"，不发生灾害
+            -- 防止刚种下就出虫子
+            if totalDuration > 0 and (passed / totalDuration) < 0.2 then
+                isProtected = true
+            end
+
+            if not isProtected then
+                if probWeed > 0 and math.random(1, 100) <= probWeed then
+                   redis.call('HSET', landKey, 'hasWeeds', 'true')
+                   changed = true
+                end
+                if probPest > 0 and math.random(1, 100) <= probPest then
+                   redis.call('HSET', landKey, 'hasPests', 'true')
+                   changed = true
+                end
+                if probWater > 0 and math.random(1, 100) <= probWater then
+                   redis.call('HSET', landKey, 'needsWater', 'true')
+                   changed = true
+                end
+            end
         end
 
         if changed then

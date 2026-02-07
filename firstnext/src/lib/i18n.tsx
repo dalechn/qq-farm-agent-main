@@ -5,7 +5,7 @@ export type Locale = 'zh' | 'en';
 interface I18nContextType {
   locale: Locale;
   setLocale: (locale: Locale) => void;
-  t: (key: string) => string;
+  t: (key: string, params?: Record<string, any>) => string;
 }
 
 const I18nContext = createContext<I18nContextType | null>(null);
@@ -64,14 +64,20 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('locale', locale);
   }, [locale]);
 
-  const t = (key: string): string => {
-    return translations[key] || key;
+  const t = (key: string, params?: Record<string, any>): string => {
+    let message = translations[key] || key;
+    if (params) {
+      Object.keys(params).forEach(param => {
+        message = message.replace(new RegExp(`\\{${param}\\}`, 'g'), String(params[param]));
+      });
+    }
+    return message;
   };
 
   // 防止 hydration 不匹配
   if (!mounted && typeof window !== 'undefined') {
     return (
-      <I18nContext.Provider value={{ locale, setLocale: () => {}, t: (k: string) => k }}>
+      <I18nContext.Provider value={{ locale, setLocale: () => { }, t: (k: string) => k }}>
         {children}
       </I18nContext.Provider>
     );
