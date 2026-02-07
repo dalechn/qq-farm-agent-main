@@ -2,37 +2,115 @@
 
 import dotenv from 'dotenv';
 import prisma from './utils/prisma';
-import { redisClient, KEYS } from './utils/redis';
+import { redisClient, KEYS, SOCIAL_KEYS } from './utils/redis';
 
 dotenv.config();
 
 console.log('🚀 Social Worker initializing (Stream Mode)...');
 
-// 专用阻塞客户端
+// 专用阻塞客户端 (用于监听新消息)
 const blockingClient = redisClient.duplicate();
 blockingClient.on('error', (err) => console.error('Social Worker Redis Error', err));
 
 async function initStream() {
     try {
-        // 建立 Consumer Group
-        await redisClient.xGroupCreate(KEYS.MQ_SOCIAL_EVENTS, KEYS.GROUP_NAME_SYNC, '0', { MKSTREAM: true });
+        await redisClient.xGroupCreate(SOCIAL_KEYS.MQ_EVENTS, SOCIAL_KEYS.GROUP_NAME, '0', { MKSTREAM: true });
         console.log('✅ Social Consumer Group created');
     } catch (e: any) {
-        if (e.message.includes('BUSYGROUP')) {
-            // Group 已存在，忽略
-        } else {
+        if (!e.message.includes('BUSYGROUP')) {
             console.error('❌ Failed to create Social Group:', e);
         }
     }
 }
 
+// ==========================================
+// 核心逻辑封装
+// ==========================================
+
+/**
+ * 处理单条消息并 ACK
+ * @returns boolean 处理是否成功
+ */
+async function processStreamEntry(msg: any): Promise<boolean> {
+    const { action, followerId, followingId, isMutual, ts } = msg.message;
+    const msgId = msg.id;
+
+    try {
+        // 1. 执行业务逻辑
+        if (action === 'FOLLOW') {
+            await handleFollow(followerId, followingId, isMutual === 'true', new Date(Number(ts)));
+        } else if (action === 'UNFOLLOW') {
+            await handleUnfollow(followerId, followingId);
+        }
+
+        // 2. 只有 DB 写入成功，才 ACK
+        await redisClient.xAck(SOCIAL_KEYS.MQ_EVENTS, SOCIAL_KEYS.GROUP_NAME, msgId);
+        return true;
+
+    } catch (err) {
+        console.error(`[Social] Error processing msg ${msgId}:`, err);
+        // 不 ACK，保留在 Pending List 中等待下一次处理或人工干预
+        return false;
+    }
+}
+
+/**
+ * [新增] 启动时处理 Pending (未确认) 消息
+ * 防止 Worker 挂掉导致消息一直卡在 Pending List
+ */
+async function processPendingEvents() {
+    console.log('[Social] Checking for pending (unacknowledged) messages...');
+
+    while (true) {
+        try {
+            // 读取 Pending 消息 (ID = '0')
+            // 注意：这里使用普通 redisClient，不需要阻塞
+            const response = await redisClient.xReadGroup(
+                SOCIAL_KEYS.GROUP_NAME,
+                SOCIAL_KEYS.CONSUMER_NAME,
+                { key: SOCIAL_KEYS.MQ_EVENTS, id: '0' },
+                { COUNT: 50 }
+            );
+
+            if (!response || response.length === 0) break;
+
+            const streamEntry = response[0];
+            const messages = streamEntry.messages;
+
+            if (messages.length === 0) break;
+
+            console.log(`[Social] Found ${messages.length} pending messages. Reprocessing...`);
+
+            let successCount = 0;
+            for (const msg of messages) {
+                const success = await processStreamEntry(msg);
+                if (success) successCount++;
+            }
+
+            // 防死循环：如果这一批消息全部失败（说明可能是坏数据或 Bug），
+            // 则停止 Pending 处理，避免无限循环阻塞启动，直接进入主循环。
+            if (successCount === 0 && messages.length > 0) {
+                console.warn('[Social] ⚠️ Stuck on pending messages (all failed). Skipping pending check to enter main loop.');
+                break;
+            }
+
+        } catch (err) {
+            console.error('[Social] Error during pending processing:', err);
+            break;
+        }
+    }
+    console.log('[Social] Pending messages check complete.');
+}
+
+/**
+ * 主循环：监听新消息
+ */
 async function processSocialEvents() {
     try {
-        // 1. 阻塞读取消息
         const response = await blockingClient.xReadGroup(
-            KEYS.GROUP_NAME_SYNC,
-            `${KEYS.CONSUMER_NAME}-social`, // 区分 consumer name
-            { key: KEYS.MQ_SOCIAL_EVENTS, id: '>' },
+            SOCIAL_KEYS.GROUP_NAME,
+            SOCIAL_KEYS.CONSUMER_NAME,
+            { key: SOCIAL_KEYS.MQ_EVENTS, id: '>' }, // 读取新消息
             { COUNT: 10, BLOCK: 5000 }
         );
 
@@ -43,38 +121,23 @@ async function processSocialEvents() {
 
         if (messages.length === 0) return;
 
-        console.log(`[Social] Processing ${messages.length} events...`);
+        console.log(`[Social] Processing ${messages.length} new events...`);
 
         for (const msg of messages) {
-            const { action, followerId, followingId, isMutual, ts } = msg.message;
-            const msgId = msg.id;
-
-            try {
-                if (action === 'FOLLOW') {
-                    await handleFollow(followerId, followingId, isMutual === 'true', new Date(Number(ts)));
-                } else if (action === 'UNFOLLOW') {
-                    await handleUnfollow(followerId, followingId);
-                }
-
-                // ACK 消息
-                await redisClient.xAck(KEYS.MQ_SOCIAL_EVENTS, KEYS.GROUP_NAME_SYNC, msgId);
-
-            } catch (err) {
-                console.error(`[Social] Error processing msg ${msgId}:`, err);
-                // 不 ACK，稍后会被 pending claim 机制或重试处理 (简化版这里暂不处理 DLQ)
-            }
+            await processStreamEntry(msg);
         }
 
     } catch (err) {
         console.error('[Social] Loop error:', err);
-        await new Promise(r => setTimeout(r, 2000)); // 防止死循环
+        await new Promise(r => setTimeout(r, 2000));
     }
 }
 
-// 业务逻辑：处理关注 (落库 + 通知)
+// ==========================================
+// 业务处理函数
+// ==========================================
+
 async function handleFollow(followerId: string, followingId: string, isMutual: boolean, createdAt: Date) {
-    // 1. 写入 DB (upsert 防止重复)
-    // 使用 prisma.$transaction 确保数据一致性 (虽然这里主要是 create)
     try {
         const exists = await prisma.follow.findUnique({
             where: { followerId_followingId: { followerId, followingId } }
@@ -86,49 +149,15 @@ async function handleFollow(followerId: string, followingId: string, isMutual: b
             });
             console.log(`[DB] Synced follow: ${followerId} -> ${followingId}`);
         }
+
+        await sendFollowNotifications(followerId, followingId, isMutual);
+
     } catch (e) {
         console.error('DB Write Follow Error', e);
-    }
-
-    // 2. 发送通知 (逻辑迁移自旧 Worker)
-    const follower = await prisma.player.findUnique({ where: { id: followerId }, select: { name: true } });
-    const following = await prisma.player.findUnique({ where: { id: followingId }, select: { name: true } });
-
-    if (!follower || !following) return;
-
-    // 通知被关注者
-    await prisma.notification.create({
-        data: {
-            playerId: followingId,
-            type: 'new_follower',
-            message: `${follower.name} followed you!`,
-            data: JSON.stringify({ followerId, followerName: follower.name })
-        }
-    });
-
-    // 如果是互粉，发送好友通知
-    if (isMutual) {
-        await prisma.notification.createMany({
-            data: [
-                {
-                    playerId: followerId,
-                    type: 'mutual_follow',
-                    message: `You and ${following.name} are now friends!`,
-                    data: JSON.stringify({ friendId: followingId, friendName: following.name })
-                },
-                {
-                    playerId: followingId,
-                    type: 'mutual_follow',
-                    message: `You and ${follower.name} are now friends!`,
-                    data: JSON.stringify({ friendId: followerId, friendName: follower.name })
-                }
-            ]
-        });
-        console.log(`[Notify] Mutual follow notifications sent`);
+        throw e;
     }
 }
 
-// 业务逻辑：处理取关
 async function handleUnfollow(followerId: string, followingId: string) {
     try {
         const exists = await prisma.follow.findUnique({
@@ -136,23 +165,69 @@ async function handleUnfollow(followerId: string, followingId: string) {
         });
 
         if (exists) {
-            await prisma.follow.delete({
-                where: { id: exists.id }
-            });
+            await prisma.follow.delete({ where: { id: exists.id } });
             console.log(`[DB] Synced unfollow: ${followerId} -x> ${followingId}`);
         }
     } catch (e) {
         console.error('DB Write Unfollow Error', e);
+        throw e;
     }
 }
+
+async function sendFollowNotifications(followerId: string, followingId: string, isMutual: boolean) {
+    try {
+        const follower = await prisma.player.findUnique({ where: { id: followerId }, select: { name: true } });
+        const following = await prisma.player.findUnique({ where: { id: followingId }, select: { name: true } });
+
+        if (!follower || !following) return;
+
+        await prisma.notification.create({
+            data: {
+                playerId: followingId,
+                type: 'new_follower',
+                message: `${follower.name} followed you!`,
+                data: JSON.stringify({ followerId, followerName: follower.name })
+            }
+        });
+
+        if (isMutual) {
+            await prisma.notification.createMany({
+                data: [
+                    {
+                        playerId: followerId,
+                        type: 'mutual_follow',
+                        message: `You and ${following.name} are now friends!`,
+                        data: JSON.stringify({ friendId: followingId, friendName: following.name })
+                    },
+                    {
+                        playerId: followingId,
+                        type: 'mutual_follow',
+                        message: `You and ${follower.name} are now friends!`,
+                        data: JSON.stringify({ friendId: followerId, friendName: follower.name })
+                    }
+                ]
+            });
+        }
+    } catch (e) {
+        console.warn('Notification failed (ignoring):', e);
+    }
+}
+
+// ==========================================
+// 入口函数
+// ==========================================
 
 async function start() {
     await redisClient.connect();
     await blockingClient.connect();
-
     await initStream();
 
+    // 1. 先处理遗留的 Pending 消息
+    await processPendingEvents();
+
     console.log('👂 Social Worker listening on Redis Stream...');
+
+    // 2. 进入主循环监听新消息
     while (true) {
         await processSocialEvents();
     }

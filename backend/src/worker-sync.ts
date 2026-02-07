@@ -41,7 +41,7 @@ async function initStream() {
     console.log('✅ Consumer Group created');
   } catch (e: any) {
     if (e.message.includes('BUSYGROUP')) {
-      console.log('ℹ️ Consumer Group already exists');
+      // console.log('ℹ️ Consumer Group already exists');
     } else {
       console.error('❌ Failed to create Consumer Group:', e);
       process.exit(1);
@@ -49,31 +49,53 @@ async function initStream() {
   }
 }
 
-async function processStreamMessages() {
+// [修改] 参数化 id，使其支持读取 Pending ('0') 或 New ('>')
+async function processStreamMessages(idToRead: string = '>') {
   try {
-    // 1. 读取消息 (Use blockingClient)
-    const response = await blockingClient.xReadGroup(
-      KEYS.GROUP_NAME_SYNC,
-      KEYS.CONSUMER_NAME,
-      { key: KEYS.MQ_GAME_EVENTS, id: '>' },
-      { COUNT: BATCH_SIZE, BLOCK: 2000 }
-    );
+    // 只有读新消息 ('>') 时才需要阻塞等待，读 Pending ('0') 不需要阻塞
+    const blockTime = idToRead === '>' ? 2000 : undefined;
 
-    if (!response || response.length === 0) return;
+    // 1. 读取消息
+    // 注意：如果是读 Pending，不要用 blockingClient (因为不需要 BLOCK)，用普通 client 即可
+    // 但为了代码复用，这里逻辑稍微区分一下
+    let response;
 
-    const streamEntry = response[0]; // { name: 'mq:game:events', messages: [...] }
+    if (idToRead === '>') {
+      response = await blockingClient.xReadGroup(
+        KEYS.GROUP_NAME_SYNC,
+        KEYS.CONSUMER_NAME,
+        { key: KEYS.MQ_GAME_EVENTS, id: idToRead },
+        { COUNT: BATCH_SIZE, BLOCK: blockTime }
+      );
+    } else {
+      // 读 Pending 消息不需要阻塞，立即返回
+      response = await redisClient.xReadGroup(
+        KEYS.GROUP_NAME_SYNC,
+        KEYS.CONSUMER_NAME,
+        { key: KEYS.MQ_GAME_EVENTS, id: idToRead },
+        { COUNT: BATCH_SIZE }
+      );
+    }
+
+    if (!response || response.length === 0) return 0; // 返回处理数量
+
+    const streamEntry = response[0];
     const messages = streamEntry.messages;
 
-    if (messages.length === 0) return;
+    if (messages.length === 0) return 0;
 
-    console.log(`[Sync] Received ${messages.length} events`);
+    if (idToRead === '0') {
+      console.log(`[Sync] ⚠️ Reprocessing ${messages.length} PENDING events...`);
+    } else {
+      console.log(`[Sync] Received ${messages.length} events`);
+    }
 
     // 2. 提取唯一的 playerId
     const playerIdsToSync = new Set<string>();
     const messageIdsToAck: string[] = [];
 
     for (const msg of messages) {
-      const msgBody = msg.message; // { playerId: '...', action: '...', ts: '...' }
+      const msgBody = msg.message;
       if (msgBody.playerId) {
         playerIdsToSync.add(msgBody.playerId);
       }
@@ -84,7 +106,8 @@ async function processStreamMessages() {
       console.log(`[Sync] Syncing ${playerIdsToSync.size} unique players...`);
 
       // 3. 并行处理玩家同步
-      // 注意：这里我们只处理去重后的 playerId，减少 DB 写次数
+      // 我们的逻辑是：只要收到了消息，就去拉取 Redis 最新状态覆盖 DB。
+      // 所以即使是旧的 Pending 消息，拉取的也是最新状态，这是天然幂等的，非常安全。
       const operations = Array.from(playerIdsToSync).map(async (playerId) => {
         try {
           const playerKey = KEYS.PLAYER(playerId);
@@ -137,31 +160,46 @@ async function processStreamMessages() {
       await Promise.all(operations);
     }
 
-    // 4. Acknowledge 消息 (即使个别玩家同步失败，也不回退消息，避免死循环阻塞。也可以选择只 Ack 成功的)
-    // 这里选择全部 Ack，假设错误是瞬时的或数据已被覆盖
+    // 4. Acknowledge 消息
     if (messageIdsToAck.length > 0) {
       await redisClient.xAck(KEYS.MQ_GAME_EVENTS, KEYS.GROUP_NAME_SYNC, messageIdsToAck);
     }
 
+    return messages.length;
+
   } catch (err) {
     console.error('[Sync] Error processing stream:', err);
+    return 0;
   }
+}
+
+// [新增] 处理 Pending 消息的循环
+async function processPendingEvents() {
+  console.log('[Sync] Checking for pending (unacknowledged) messages...');
+  while (true) {
+    // 循环读取 ID='0'，直到没有 Pending 消息为止
+    const count = await processStreamMessages('0');
+    if (count === 0) break;
+  }
+  console.log('[Sync] Pending messages check complete.');
 }
 
 async function startSyncLoop() {
   if (!redisClient.isOpen) await redisClient.connect();
-  if (!blockingClient.isOpen) await blockingClient.connect(); // Connect blocking client
+  if (!blockingClient.isOpen) await blockingClient.connect();
   console.log('✅ Sync Worker connected to Redis (Stream Mode)');
 
   await initStream();
 
+  // 1. 启动时优先处理 Pending
+  await processPendingEvents();
+
+  // 2. 进入主循环处理新消息
   while (!isShuttingDown) {
-    await processStreamMessages();
-    // 循环间隔由 xReadGroup 的 BLOCK 控制，这里无需额外 sleep，但在无消息时 BLOCK 返回后立即再次循环
-    // 为避免由于 Redis 错误导致的 tight loop，可以在 catch 中加 sleep
+    await processStreamMessages('>');
   }
 
-  await blockingClient.disconnect(); // Disconnect blocking client
+  await blockingClient.disconnect();
   await redisClient.disconnect();
   process.exit(0);
 }
