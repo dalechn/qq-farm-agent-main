@@ -473,77 +473,73 @@ export const LUA_SCRIPTS = {
   TRIGGER_EVENTS: `
     local playerKey = KEYS[1]
     local dirtyLands = KEYS[2]
+    
     local maxLands = tonumber(ARGV[1])
     local probWeed = tonumber(ARGV[2])
     local probPest = tonumber(ARGV[3])
     local probWater = tonumber(ARGV[4])
     local now = tonumber(ARGV[5])
-    local interval = tonumber(ARGV[6])
+    local checkInterval = tonumber(ARGV[6])
 
-    -- 1. 检查冷却时间
+    -- 检查上次触发时间，防止过于频繁触发
     local lastCheck = tonumber(redis.call('HGET', playerKey, 'lastDisasterCheck') or '0')
-    if (now - lastCheck) < interval then
-      return {} 
+    if (now - lastCheck) < checkInterval then
+        return 0
     end
-
-    -- 2. 更新最后检查时间
     redis.call('HSET', playerKey, 'lastDisasterCheck', now)
 
-    -- 3. 遍历土地
-    local affected = {}
-    local playerId = string.match(playerKey, "game:player:(.+)")
+    local triggeredCount = 0
 
     for i = 0, (maxLands - 1) do
-      local landKey = "game:land:" .. playerId .. ":" .. i
-      -- [新增] 额外获取 plantedAt
-      local info = redis.call('HMGET', landKey, 'status', 'matureAt', 'plantedAt')
-      local status = info[1]
-      local matureAt = tonumber(info[2] or '0')
-      local plantedAt = tonumber(info[3] or '0')
-
-      if status == 'planted' then
-        local changed = false
+        local landKey = 'game:land:' .. string.match(playerKey, "player:(.+)") .. ':' .. i
         
-        -- 优先检查成熟
-        if now >= matureAt then
-            redis.call('HSET', landKey, 'status', 'harvestable')
-            changed = true
-        else
-            -- 仅当未成熟时检查灾害
-            -- 计算生长进度
-            local totalDuration = matureAt - plantedAt
-            local passed = now - plantedAt
+        -- 只有种植中(planted)的土地才会发生灾害
+        local status = redis.call('HGET', landKey, 'status')
+        if status == 'planted' then
+            local changed = false
+            
+            -- 读取当前状态
+            local hasWeeds = redis.call('HGET', landKey, 'hasWeeds')
+            local hasPests = redis.call('HGET', landKey, 'hasPests')
+            local needsWater = redis.call('HGET', landKey, 'needsWater')
+            
+            -- [新增] 读取种植时间，用于保护期计算
+            local plantedAt = tonumber(redis.call('HGET', landKey, 'plantedAt') or '0')
+            local matureAt = tonumber(redis.call('HGET', landKey, 'matureAt') or '0')
+            
+            -- [可选] 保护期逻辑：生长前 20% 时间不发生灾害
+            local totalTime = matureAt - plantedAt
+            local passedTime = now - plantedAt
             local isProtected = false
-
-            -- [新增] 保护机制：如果生长进度小于 20%，则处于"幼苗保护期"，不发生灾害
-            -- 防止刚种下就出虫子
-            if totalDuration > 0 and (passed / totalDuration) < 0.2 then
+            if totalTime > 0 and (passedTime / totalTime) < 0.2 then
                 isProtected = true
             end
 
             if not isProtected then
-                if probWeed > 0 and math.random(1, 100) <= probWeed then
+                -- [核心修复] 只有当前不是 true 时，才执行设置
+                if hasWeeds ~= 'true' and probWeed > 0 and math.random(1, 100) <= probWeed then
                    redis.call('HSET', landKey, 'hasWeeds', 'true')
                    changed = true
                 end
-                if probPest > 0 and math.random(1, 100) <= probPest then
+                
+                if hasPests ~= 'true' and probPest > 0 and math.random(1, 100) <= probPest then
                    redis.call('HSET', landKey, 'hasPests', 'true')
                    changed = true
                 end
-                if probWater > 0 and math.random(1, 100) <= probWater then
+                
+                if needsWater ~= 'true' and probWater > 0 and math.random(1, 100) <= probWater then
                    redis.call('HSET', landKey, 'needsWater', 'true')
                    changed = true
                 end
             end
-        end
 
-        if changed then
-          redis.call('SADD', dirtyLands, landKey)
-          table.insert(affected, i)
+            -- 只有真正发生变化(changed=true)时，才加入脏集合
+            if changed then
+                redis.call('SADD', dirtyLands, landKey)
+                triggeredCount = triggeredCount + 1
+            end
         end
-      end
     end
-
-    return affected
-  `
+    return triggeredCount
+  `,
 };

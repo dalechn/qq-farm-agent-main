@@ -36,34 +36,47 @@ async function syncDirtyData() {
   // 1. 同步玩家 (Dirty Players)
   // -------------------------
   try {
-    // [修复] 增加类型兼容处理，防止 sPop 返回单个 string
+    // [修复1] 兼容 sPop 返回类型 (string | string[])
     const rawIds = await (redisClient as any).sPop(KEYS.DIRTY_PLAYERS, BATCH_SIZE);
-    const playerIds: string[] = Array.isArray(rawIds)
+    const dirtyPlayerKeys: string[] = Array.isArray(rawIds)
       ? rawIds
       : (rawIds ? [rawIds as string] : []);
 
-    if (playerIds && playerIds.length > 0) {
-      if (playerIds.length === BATCH_SIZE) hasMoreWork = true;
-      console.log(`[Sync] Updating ${playerIds.length} players...`);
+    if (dirtyPlayerKeys && dirtyPlayerKeys.length > 0) {
+      if (dirtyPlayerKeys.length === BATCH_SIZE) hasMoreWork = true;
+      console.log(`[Sync] Updating ${dirtyPlayerKeys.length} players...`);
 
-      const operations = playerIds.map(async (playerId) => {
-        const raw = await redisClient.hGetAll(KEYS.PLAYER(playerId));
-        if (!raw || Object.keys(raw).length === 0) return;
+      const operations = dirtyPlayerKeys.map(async (playerKey) => {
+        // [修复2] Lua 脚本存入的是完整 Key (game:player:uuid)，我们需要解析出 uuid
+        // 格式: game:player:{uuid}
+        const parts = playerKey.split(':');
+        const realPlayerId = parts[parts.length - 1]; // 获取真正的 UUID
+
+        if (!realPlayerId) return;
+
+        // 直接使用 playerKey 读取数据，不要再包一层 KEYS.PLAYER
+        const raw = await redisClient.hGetAll(playerKey);
+
+        if (!raw || Object.keys(raw).length === 0) {
+          // console.warn(`[Sync] Player Key ${playerKey} is empty in Redis.`);
+          return;
+        }
+
         const data = parseRedisHash<any>(raw);
 
         return prisma.player.update({
-          where: { id: playerId },
+          where: { id: realPlayerId }, // 使用解析出来的真实 ID
           data: {
             gold: Number(data.gold || 0),
             exp: Number(data.exp || 0),
             level: Number(data.level || 1),
-            // landCount: Number(data.landCount || 6),
+            // landCount: Number(data.landCount || 6), 
             hasDog: data.hasDog === 'true',
             dogActiveUntil: data.dogActiveUntil && Number(data.dogActiveUntil) > 0
               ? new Date(Number(data.dogActiveUntil))
               : null,
           }
-        }).catch((err: any) => console.error(`[Sync] Player ${playerId} failed:`, err.message));
+        }).catch(err => console.error(`[Sync] Player ${realPlayerId} failed:`, err.message));
       });
 
       await Promise.all(operations);
@@ -76,7 +89,6 @@ async function syncDirtyData() {
   // 2. 同步土地 (Dirty Lands)
   // -------------------------
   try {
-    // [修复] 增加类型兼容处理，防止 sPop 返回单个 string
     const rawKeys = await (redisClient as any).sPop(KEYS.DIRTY_LANDS, BATCH_SIZE);
     const dirtyKeys: string[] = Array.isArray(rawKeys)
       ? rawKeys
@@ -87,17 +99,15 @@ async function syncDirtyData() {
       console.log(`[Sync] Updating ${dirtyKeys.length} lands...`);
 
       const operations = dirtyKeys.map(async (keyStr) => {
+        // keyStr 已经是 game:land:uuid:pos 格式
         const parts = keyStr.split(':');
-        // 防御性检查：确保 key 格式正确 (game:land:playerId:position)
         if (parts.length < 4) return;
 
-        // 倒数第一位是 position，倒数第二位是 playerId
         const position = parseInt(parts[parts.length - 1]);
         const playerId = parts[parts.length - 2];
 
-        const redisLandKey = KEYS.LAND(playerId, position);
-
-        const raw = await redisClient.hGetAll(redisLandKey);
+        // 直接用 keyStr 读取
+        const raw = await redisClient.hGetAll(keyStr);
         if (!raw || Object.keys(raw).length === 0) return;
 
         const updateData = mapRedisLandToPrisma(raw);
@@ -106,7 +116,7 @@ async function syncDirtyData() {
           where: { playerId_position: { playerId, position } },
           update: updateData,
           create: { playerId, position, ...updateData }
-        }).catch((err: any) => console.error(`[Sync] Land ${keyStr} failed:`, err.message));
+        }).catch(err => console.error(`[Sync] Land ${keyStr} failed:`, err.message));
       });
 
       await Promise.all(operations);
