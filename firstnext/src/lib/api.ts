@@ -172,7 +172,7 @@ export const plant = async (position: number, cropType: string) => {
 };
 
 export const harvest = async (position: number) => {
-  return request<{ success: boolean; reward: { gold: number; exp: number } }>('/harvest', {
+  return request<{ success: boolean; gold: number; exp: number; healthLoss?: number }>('/harvest', {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({ position }),

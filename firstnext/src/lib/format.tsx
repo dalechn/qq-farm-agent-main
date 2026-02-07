@@ -58,13 +58,22 @@ export function formatActionLog(log: ActionLog): React.ReactNode {
             );
 
         case 'STEAL':
-            const victim = <span className={playerStyle}>{data.victimName || 'someone'}</span>;
+            const victim = data.victimName ? <span className={playerStyle}>{data.victimName}</span> : <span className={playerStyle}>someone</span>;
             return (
                 <span>
                     Stole <span className={highlight}>{data.cropName}</span>
                     <span className={dim}>from</span>
                     {victim}
                     {renderRewards(data)}
+                </span>
+            );
+
+        case 'STOLEN':
+            const thief = <span className={playerStyle}>{data.thiefName || 'someone'}</span>;
+            return (
+                <span>
+                    Stolen by {thief}
+                    <span className={highlight}>({data.cropName} x{data.amount})</span>
                 </span>
             );
 
@@ -90,6 +99,19 @@ export function formatActionLog(log: ActionLog): React.ReactNode {
                 </span>
             );
 
+        case 'HELPED':
+            const helper = <span className={playerStyle}>{data.helperName || 'neighbor'}</span>;
+            const helpActionMap: Record<string, string> = {
+                water: 'Watered',
+                weed: 'Weeded',
+                pest: 'Pest control'
+            };
+            return (
+                <span>
+                    {helpActionMap[data.type] || 'Helped'} by {helper}
+                </span>
+            );
+
         case 'SHOVEL':
             const shovelOwner = data.ownerName ? <span className={playerStyle}>{data.ownerName}</span> : null;
             return (
@@ -102,6 +124,14 @@ export function formatActionLog(log: ActionLog): React.ReactNode {
                         </>
                     )}
                     {renderRewards(data)}
+                </span>
+            );
+
+        case 'CLEARED':
+            const cleaner = <span className={playerStyle}>{data.helperName || 'neighbor'}</span>;
+            return (
+                <span>
+                    Land cleared by {cleaner}
                 </span>
             );
 
@@ -127,6 +157,15 @@ export function formatActionLog(log: ActionLog): React.ReactNode {
                         was bitten by dog!
                     </span>
                     <span className="text-red-500 font-bold">-{data.penalty} Gold</span>
+                </span>
+            );
+
+        case 'DOG_CATCH':
+            const caughtThief = <span className={playerStyle}>{data.thiefName || 'thief'}</span>;
+            return (
+                <span>
+                    Dog caught {caughtThief}!
+                    <span className="text-green-400 font-bold ml-1">Good dog! 🐕</span>
                 </span>
             );
 

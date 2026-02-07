@@ -85,19 +85,39 @@ services:
       - farm-network
     restart: unless-stopped
 
-  # 3. 后台 Worker (Worker)
-  # 异步处理偷菜日志、发送通知、排行榜计算
-  worker:
+  # 3. [新增] 社交 Worker (BullMQ)
+  # 专门处理通知、邮件、互粉逻辑
+  worker-social:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: qq-farm-worker
+    container_name: qq-farm-worker-social
     environment:
       NODE_ENV: production
-      SERVICE_NAME: worker  # 指定启动模式
+      SERVICE_NAME: worker-social  # 对应 Dockerfile 中的 elif
       DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
       REDIS_URL: redis://redis:6379
-    # Worker 不需要暴露端口，它只在后台跑
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - farm-network
+    restart: unless-stopped
+
+  # 4. [新增] 同步 Worker (Redis Loop)
+  # 专门处理脏数据回写 (Write-Behind)
+  worker-sync:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: qq-farm-worker-sync
+    environment:
+      NODE_ENV: production
+      SERVICE_NAME: worker-sync    # 对应 Dockerfile 中的 elif
+      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy

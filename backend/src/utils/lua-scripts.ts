@@ -27,7 +27,7 @@ const XP_LOGIC = `
 `;
 
 export const LUA_SCRIPTS = {
-  
+
   // ==========================================
   // 1. 种植 (Plant)
   // ==========================================
@@ -95,7 +95,7 @@ export const LUA_SCRIPTS = {
 
     return {'OK', tostring(isLevelUp)}
   `,
-  
+
   // ==========================================
   // 2. 收获 (Harvest)
   // ==========================================
@@ -111,15 +111,16 @@ export const LUA_SCRIPTS = {
     local now = tonumber(ARGV[3])
     local stealPenaltyRate = tonumber(ARGV[4])
     local healthPenaltyRate = tonumber(ARGV[5])
-    local regrowTime = tonumber(ARGV[6])
+    local regrowTime = tonumber(ARGV[6]) * 1000
 
-    local landInfo = redis.call('HMGET', landKey, 'status', 'matureAt', 'stolenCount', 'hasWeeds', 'hasPests', 'remainingHarvests')
+    local landInfo = redis.call('HMGET', landKey, 'status', 'matureAt', 'stolenCount', 'hasWeeds', 'hasPests', 'remainingHarvests', 'needsWater')
     local status = landInfo[1]
     local matureAt = tonumber(landInfo[2] or '0')
     local stolenCount = tonumber(landInfo[3] or '0')
     local hasWeeds = (landInfo[4] == 'true')
     local hasPests = (landInfo[5] == 'true')
     local remaining = tonumber(landInfo[6] or '1')
+    local needsWater = (landInfo[7] == 'true')
 
     -- 检查是否可收获
     local isReady = false
@@ -133,10 +134,13 @@ export const LUA_SCRIPTS = {
     finalRate = finalRate - (stolenCount * stealPenaltyRate)
     if hasWeeds then finalRate = finalRate - healthPenaltyRate end
     if hasPests then finalRate = finalRate - healthPenaltyRate end
+    if needsWater then finalRate = finalRate - healthPenaltyRate end
     if finalRate < 0.1 then finalRate = 0.1 end
 
-    local finalGold = math.floor(baseGold * finalRate)
-    local finalExp = math.floor(baseExp * finalRate) 
+    -- 修复浮点数精度: 使用四舍五入而不是直接floor
+    local finalGold = math.floor(baseGold * finalRate + 0.5)
+    -- 经验不受惩罚影响
+    local finalExp = baseExp 
 
     redis.call('HINCRBYFLOAT', playerKey, 'gold', finalGold)
     
@@ -151,7 +155,8 @@ export const LUA_SCRIPTS = {
       local nextMatureAt = now + regrowTime
       redis.call('HMSET', landKey, 
         'status', 'planted',
-        'matureAt', nextMatureAt,     
+        'matureAt', nextMatureAt,
+        'plantedAt', now,
         'remainingHarvests', nextRemaining,
         'stolenCount', 0,             
         'hasWeeds', 'false',          
@@ -175,7 +180,7 @@ export const LUA_SCRIPTS = {
     redis.call('SADD', dirtyLands, landKey)
     redis.call('SADD', dirtyPlayers, playerKey)
 
-    return {finalGold, finalExp, tostring(finalRate), nextRemaining, tostring(isLevelUp)}
+    return {finalGold, finalExp, tostring(finalRate), nextRemaining, tostring(isLevelUp), tostring(hasWeeds), tostring(hasPests), tostring(needsWater)}
   `,
 
   // ==========================================
@@ -284,6 +289,14 @@ export const LUA_SCRIPTS = {
     local playerKey = KEYS[3]
     local dirtyPlayers = KEYS[4]
     local expGain = tonumber(ARGV[1])
+    local isOwner = ARGV[2] == 'true'
+
+    local status = redis.call('HGET', landKey, 'status')
+    if status == 'empty' then return {err = 'Land is already empty'} end
+
+    if not isOwner and status ~= 'withered' then
+      return {err = 'Cannot shovel others planted crops'}
+    end
 
     redis.call('HMSET', landKey, 
       'status', 'empty',
@@ -359,34 +372,50 @@ export const LUA_SCRIPTS = {
 
   EXPAND_LAND: `
     local playerKey = KEYS[1]
-    local newLandKey = KEYS[2]
+    local dirtyPlayersKey = KEYS[2]
+    local dirtyLandsKey = KEYS[3]
+    
     local cost = tonumber(ARGV[1])
     local maxLimit = tonumber(ARGV[2])
-    local posIdStr = ARGV[3]
-
-    local info = redis.call('HMGET', playerKey, 'gold', 'landCount')
-    local gold = tonumber(info[1] or '0')
-    local currentCount = tonumber(info[2] or '6')
-
-    if currentCount >= maxLimit then return {err = 'Max land limit reached'} end
-    if gold < cost then return {err = 'Not enough gold'} end
-
+    local playerId = ARGV[3]
+    local defaultCount = 6
+    
+    -- 1. 检查金币
+    local gold = tonumber(redis.call('HGET', playerKey, 'gold') or 0)
+    if gold < cost then
+        return { err = 'Not enough gold' }
+    end
+    
+    -- 2. 原子获取并增加土地数量
+    local currentCount = tonumber(redis.call('HGET', playerKey, 'landCount') or defaultCount)
+    
+    if currentCount >= maxLimit then
+        return { err = 'Max land limit reached' }
+    end
+    
+    local newPos = currentCount 
+    
+    -- 3. 扣费并更新数量
     redis.call('HINCRBYFLOAT', playerKey, 'gold', -cost)
-    redis.call('HINCRBY', playerKey, 'landCount', 1)
-
-    redis.call('HMSET', newLandKey,
-      'dbId', '', 
-      'tempId', posIdStr,
-      'position', currentCount,
+    redis.call('HSET', playerKey, 'landCount', currentCount + 1)
+    
+    -- 4. 初始化新土地
+    local newLandKey = 'game:land:' .. playerId .. ':' .. newPos
+    
+    redis.call('HMSET', newLandKey, 
+      'id', '0', 
+      'position', newPos,
       'status', 'empty',
       'landType', 'normal',
       'remainingHarvests', 0,
       'stolenCount', 0
     )
-
-    redis.call('SADD', KEYS[3], playerKey)
-    redis.call('SADD', KEYS[4], newLandKey)
-    return {currentCount}
+    
+    -- 5. 标记脏数据
+    redis.call('SADD', dirtyPlayersKey, playerId)
+    redis.call('SADD', dirtyLandsKey, playerId .. ':' .. newPos) 
+    
+    return { newPos, currentCount + 1 }
   `,
 
   BUY_OR_FEED_DOG: `

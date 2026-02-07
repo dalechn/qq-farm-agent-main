@@ -110,7 +110,7 @@ export class GameService {
   }
 
   private static async tryTriggerDisasters(playerId: string) {
-    const PROB_WEED = 10; const PROB_PEST = 10; const PROB_WATER = 20;
+    const { PROB_WEED, PROB_PEST, PROB_WATER } = GAME_CONFIG.DISASTER;
     try {
       const res = await redisClient.eval(LUA_SCRIPTS.TRIGGER_EVENTS, {
         keys: [KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS],
@@ -123,19 +123,19 @@ export class GameService {
           DISASTER_CHECK_INTERVAL.toString()
         ]
       });
-      const affected = res as number[];
-      if (affected && affected.length > 0) {
-        broadcast({
-          type: 'action',
-          action: 'DISASTER',
-          playerId,
-          details: 'Farm status updated!',
-          data: {
-            positions: affected,
-            type: 'disaster'
-          }
-        });
-      }
+      // const affected = res as number[];
+      // if (affected && affected.length > 0) {
+      //   broadcast({
+      //     type: 'action',
+      //     action: 'DISASTER',
+      //     playerId,
+      //     details: 'Farm status updated!',
+      //     data: {
+      //       positions: affected,
+      //       type: 'disaster'
+      //     }
+      //   }, false);
+      // }
     } catch (e) { }
   }
 
@@ -182,7 +182,7 @@ export class GameService {
         playerName, // Ensure playerName is passed if available
         details: 'Level Up!',
         data: { level: 'unknown' } // Lua doesn't return new level, might need to fetch or just notify
-      });
+      }, false);
     }
 
     broadcast({
@@ -234,13 +234,30 @@ export class GameService {
     });
     this.checkLuaError(res);
 
-    const [finalGold, finalExp, finalRateStr, nextRemaining, isLevelUpStr] = res as [number, number, string, number, string];
-
-    if (isLevelUpStr === 'true') {
-      broadcast({ type: 'action', action: 'LEVEL_UP', playerId, details: 'Level Up!' });
-    }
+    const [finalGold, finalExp, finalRateStr, nextRemaining, isLevelUpStr, hasWeedsStr, hasPestsStr, needsWaterStr] = res as [number, number, string, number, string, string, string, string];
 
     const playerName = await this.getPlayerName(playerId);
+
+    if (isLevelUpStr === 'true') {
+      broadcast({ type: 'action', action: 'LEVEL_UP', playerId, playerName, details: 'Level Up!' }, false);
+    }
+
+    const hasWeeds = hasWeedsStr === 'true';
+    const hasPests = hasPestsStr === 'true';
+    const needsWater = needsWaterStr === 'true';
+    let healthLoss = 0;
+
+    // Calculate potential loss if there were weeds/pests
+    // Note: This is an estimation for display. The actual deduction happened in Lua via rate.
+    // Logic: baseGold * (1 - rate) is total loss.
+    // We want specifically loss due to health.
+    // If rate was reduced by HEALTH_PENALTY (0.2) for each issue.
+    if (hasWeeds || hasPests || needsWater) {
+      const penaltyCount = (hasWeeds ? 1 : 0) + (hasPests ? 1 : 0) + (needsWater ? 1 : 0);
+      // Loss = BaseGold * (PenaltyRate * Count)
+      healthLoss = Math.floor(baseGold * (HEALTH_PENALTY * penaltyCount));
+    }
+
     broadcast({
       type: 'action', action: 'HARVEST', playerId, playerName,
       details: `Harvested ${crop.name}`,
@@ -251,11 +268,12 @@ export class GameService {
         quality: parseFloat(finalRateStr),
         cropId: crop.type,
         cropName: crop.name,
-        remainingHarvests: nextRemaining
+        remainingHarvests: nextRemaining,
+        healthLoss: healthLoss > 0 ? healthLoss : undefined
       }
     });
 
-    return { success: true, gold: finalGold, exp: finalExp, remainingHarvests: nextRemaining };
+    return { success: true, gold: finalGold, exp: finalExp, remainingHarvests: nextRemaining, healthLoss: healthLoss > 0 ? healthLoss : undefined };
   }
 
   // ==========================================
@@ -318,6 +336,22 @@ export class GameService {
         }
       });
 
+      broadcast({
+        type: 'action',
+        action: 'STOLEN',
+        playerId: victimId,
+        playerName: victimName,
+        details: `Stolen by ${stealerName}`,
+        data: {
+          gold: -stealAmount,
+          thiefId: stealerId,
+          thiefName: stealerName,
+          cropId: crop!.type,
+          cropName: crop!.name,
+          amount: 1
+        }
+      }, false);
+
       // [修复] 返回前端需要的完整数据结构
       return {
         success: true,
@@ -343,6 +377,21 @@ export class GameService {
             victimId
           }
         });
+
+        const victimName = await this.getPlayerName(victimId);
+        broadcast({
+          type: 'action',
+          action: 'DOG_CATCH',
+          playerId: victimId,
+          playerName: victimName,
+          details: `Dog caught ${stealerName}!`,
+          data: {
+            penalty: BITE_PENALTY,
+            thiefId: stealerId,
+            thiefName: stealerName
+          }
+        }, false);
+
         return { success: false, reason: 'bitten', penalty: BITE_PENALTY };
       }
       throw e;
@@ -368,15 +417,17 @@ export class GameService {
 
     const [actualExpGain, isLevelUpStr] = res as [number, string];
 
+    const operatorName = await this.getPlayerName(operatorId);
+
     if (isLevelUpStr === 'true') {
-      broadcast({ type: 'action', action: 'LEVEL_UP', playerId: operatorId, details: 'Level Up!' });
+      broadcast({ type: 'action', action: 'LEVEL_UP', playerId: operatorId, playerName: operatorName, details: 'Level Up!' }, false);
     }
 
     broadcast({
       type: 'action',
       action: 'CARE',
       playerId: operatorId,
-      playerName: await this.getPlayerName(operatorId),
+      playerName: operatorName,
       details: `Helped with ${type}`,
       data: {
         position,
@@ -386,6 +437,22 @@ export class GameService {
         ownerName: operatorId !== ownerId ? await this.getPlayerName(ownerId) : undefined
       }
     });
+
+    if (operatorId !== ownerId) {
+      broadcast({
+        type: 'action',
+        action: 'HELPED',
+        playerId: ownerId,
+        playerName: await this.getPlayerName(ownerId),
+        details: `Farm tended by ${operatorName}`,
+        data: {
+          position,
+          type,
+          helperId: operatorId,
+          helperName: operatorName
+        }
+      }, false);
+    }
     return { success: true, xpGain: actualExpGain };
   }
 
@@ -404,20 +471,22 @@ export class GameService {
     // operatorId gets EXP, ownerId's land is cleared
     const res = await redisClient.eval(LUA_SCRIPTS.SHOVEL, {
       keys: [KEYS.LAND(ownerId, position), KEYS.DIRTY_LANDS, KEYS.PLAYER(operatorId), KEYS.DIRTY_PLAYERS],
-      arguments: [expGain.toString()]
+      arguments: [expGain.toString(), (operatorId === ownerId).toString()]
     });
     this.checkLuaError(res);
 
+    const operatorName = await this.getPlayerName(operatorId);
+
     const isLevelUp = (res as any)[1] === 'true';
     if (isLevelUp) {
-      broadcast({ type: 'action', action: 'LEVEL_UP', playerId: operatorId, details: 'Level Up!' });
+      broadcast({ type: 'action', action: 'LEVEL_UP', playerId: operatorId, playerName: operatorName, details: 'Level Up!' }, false);
     }
 
     broadcast({
       type: 'action',
       action: 'SHOVEL',
       playerId: operatorId,
-      playerName: await this.getPlayerName(operatorId),
+      playerName: operatorName,
       details: operatorId === ownerId ? 'Cleared land' : 'Helped clear land',
       data: {
         position,
@@ -426,6 +495,21 @@ export class GameService {
         ownerName: operatorId !== ownerId ? await this.getPlayerName(ownerId) : undefined
       }
     });
+
+    if (operatorId !== ownerId) {
+      broadcast({
+        type: 'action',
+        action: 'CLEARED',
+        playerId: ownerId,
+        playerName: await this.getPlayerName(ownerId),
+        details: `Land cleared by ${operatorName}`,
+        data: {
+          position,
+          helperId: operatorId,
+          helperName: operatorName
+        }
+      }, false);
+    }
     return { success: true, expGain };
   }
 
@@ -449,18 +533,37 @@ export class GameService {
         landType: upgradeConfig.next,
         cost: upgradeConfig.price
       }
-    });
+    }, false);
     return { success: true, newType: upgradeConfig.next };
   }
 
   static async expandLand(playerId: string) {
     await this.ensurePlayerLoaded(playerId);
+
+    // 1. 计算费用 (这里读一次 Redis 没关系，只是为了展示给用户或预判，实际扣费在 Lua)
     const countStr = await redisClient.hGet(KEYS.PLAYER(playerId), 'landCount');
     const currentCount = parseInt(countStr || '6');
     const cost = GAME_CONFIG.LAND.EXPAND_BASE_COST + (currentCount * 1000);
-    const newPos = currentCount;
-    const res = await redisClient.eval(LUA_SCRIPTS.EXPAND_LAND, { keys: [KEYS.PLAYER(playerId), KEYS.LAND(playerId, newPos), KEYS.DIRTY_PLAYERS, KEYS.DIRTY_LANDS], arguments: [cost.toString(), GAME_CONFIG.LAND.MAX_LIMIT.toString(), `${playerId}:${newPos}`] });
+
+    // 2. 调用 Lua
+    const res = await redisClient.eval(LUA_SCRIPTS.EXPAND_LAND, {
+      keys: [
+        KEYS.PLAYER(playerId),
+        KEYS.DIRTY_PLAYERS,
+        KEYS.DIRTY_LANDS
+      ],
+      arguments: [
+        cost.toString(),
+        GAME_CONFIG.LAND.MAX_LIMIT.toString(),
+        playerId
+      ]
+    });
+
     this.checkLuaError(res);
+
+    // Lua 返回 [newPos, newTotalCount]
+    const [newPos, newTotal] = res as [number, number];
+
     broadcast({
       type: 'action',
       action: 'EXPAND_LAND',
@@ -469,11 +572,12 @@ export class GameService {
       details: `Expanded farm`,
       data: {
         position: newPos,
-        landCount: currentCount + 1,
+        landCount: newTotal,
         cost
       }
-    });
-    return { success: true, position: newPos };
+    }, false);
+
+    return { success: true, position: newPos, landCount: newTotal };
   }
 
   static async useFertilizer(playerId: string, position: number, type: 'normal' | 'high') {
@@ -513,7 +617,7 @@ export class GameService {
         price,
         isFeed
       }
-    });
+    }, false);
     return { success: true };
   }
 

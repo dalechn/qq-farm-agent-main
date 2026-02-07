@@ -33,8 +33,10 @@ EXPOSE 3001 3002
 CMD ["sh", "-c", "npx prisma db push && \
     if [ \"$SERVICE_NAME\" = \"auth\" ]; then \
         node dist/auth-server.js; \
-    elif [ \"$SERVICE_NAME\" = \"worker\" ]; then \
-        node dist/worker.js; \
+    elif [ \"$SERVICE_NAME\" = \"worker-social\" ]; then \
+        node dist/worker-social.js; \
+    elif [ \"$SERVICE_NAME\" = \"worker-sync\" ]; then \
+        node dist/worker-sync.js; \
     else \
         node dist/index.js; \
     fi"]

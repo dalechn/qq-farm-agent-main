@@ -216,7 +216,12 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
           await plant(land.position, selectedCrop);
           onUpdate?.();
         } else if (land.status === 'harvestable' || isMature) {
-          await harvest(land.position);
+          const res = await harvest(land.position);
+          if (res.healthLoss && res.healthLoss > 0) {
+            toast(`Harvested ${cropName}! +${res.gold} Gold (Lost ${res.healthLoss} due to poor health)`, 'success');
+          } else {
+            toast(`Harvested ${cropName}! +${res.gold} Gold`, 'success');
+          }
           onUpdate?.();
         } else if (land.status === 'withered') {
           await shovelLand(land.position);

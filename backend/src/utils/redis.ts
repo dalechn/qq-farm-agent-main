@@ -18,7 +18,7 @@ export const connectRedis = async () => {
     await redisClient.connect();
     console.log('✅ Connected to Redis (Publisher)');
   }
-  
+
   if (!redisSubscriber.isOpen) {
     await redisSubscriber.connect();
     console.log('✅ Connected to Redis (Subscriber)');
@@ -49,13 +49,13 @@ export const getTopPlayers = async (type: 'gold' | 'level', limit: number = 10) 
 export const KEYS = {
   // Hash: 玩家数据 game:player:{id}
   PLAYER: (id: string) => `game:player:${id}`,
-  
+
   // Hash: 土地数据 game:land:{playerId}:{position}
   LAND: (pid: string, pos: number) => `game:land:${pid}:${pos}`,
-  
+
   // Set: 某块地的偷窃者记录 game:land:{pid}:{pos}:thieves
   LAND_THIEVES: (pid: string, pos: number) => `game:land:${pid}:${pos}:thieves`,
-  
+
   // Set: 脏数据集合 (Worker 监控这些 Key 进行写库)
   DIRTY_PLAYERS: 'dirty:players',
   DIRTY_LANDS: 'dirty:lands',
@@ -69,19 +69,16 @@ export const KEYS = {
 export const parseRedisHash = <T>(data: Record<string, string>): T | null => {
   if (!data || Object.keys(data).length === 0) return null;
   const result: any = { ...data };
-  
+
   // 自动类型转换：数字字符串转数字，日期字符串转对象
   for (const key in result) {
     const val = result[key];
     // 判断是否是数字
     if (!isNaN(Number(val)) && val !== '') {
       // 特殊字段如果是时间戳，转为 Date
-      if (key.endsWith('At') && Number(val) > 1000000000) { 
-        // 假设大于某数值的数字是时间戳 (简单判断)
-        // 实际上建议在 Service 层手动处理 Date，这里只转 Number
-        // 为了兼容 Prisma Date 类型，这里我们先保留 String 时间戳，Service 层再转 Date
+      if (key.endsWith('At') && Number(val) > 1000000000) {
       } else {
-         result[key] = Number(val);
+        result[key] = Number(val);
       }
     }
   }

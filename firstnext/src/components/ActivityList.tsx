@@ -9,6 +9,11 @@ export function getActionColor(action: string) {
     HARVEST: "text-green-400",
     PLANT: "text-blue-400",
     STEAL: "text-red-400",
+    STOLEN: "text-red-500", // Bad for victim
+    HELPED: "text-green-400", // Good for owner
+    CLEARED: "text-green-400",
+    DOG_CATCH: "text-green-400", // Good for owner
+    DOG_BITE: "text-red-500", // Bad for thief
     JOIN: "text-cyan-400",
   };
   return map[action] || "text-stone-400";

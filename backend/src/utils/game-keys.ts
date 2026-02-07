@@ -30,28 +30,28 @@ const LEVEL_UP_EXP = [
 
 export const GAME_CONFIG = {
   // 导出经验表供 Lua 使用
-  LEVEL_UP_EXP, 
+  LEVEL_UP_EXP,
 
   LAND: {
     INITIAL_COUNT: 6,
     MAX_LIMIT: 18,
     EXPAND_BASE_COST: 1000
   },
-  
+
   // 经验倍率配置
   EXP_RATES: {
-    PLANT: 10,  
-    SHOVEL: 5,  
-    CARE: 10,   
+    PLANT: 10,
+    SHOVEL: 5,
+    CARE: 10,
   },
 
   LAND_LEVELS: ['normal', 'red', 'black', 'gold'] as const,
 
   LAND_UPGRADE: {
-    normal: { price: 5000,   next: 'red',   levelReq: 5 },
-    red:    { price: 20000,  next: 'black', levelReq: 15 },
-    black:  { price: 100000, next: 'gold',  levelReq: 30 },
-    gold:   { price: 0,      next: '',      levelReq: 999 }
+    normal: { price: 5000, next: 'red', levelReq: 5 },
+    red: { price: 20000, next: 'black', levelReq: 15 },
+    black: { price: 100000, next: 'gold', levelReq: 30 },
+    gold: { price: 0, next: '', levelReq: 999 }
   },
 
   FERTILIZER: {
@@ -67,123 +67,129 @@ export const GAME_CONFIG = {
     CATCH_RATE: 40,       // 咬人几率 (40%)
     BITE_PENALTY: 200     // 被咬罚款 (200金币)
   },
-  
+
   BASE_RATES: {
     STEAL_PENALTY: 0.1,  // 被偷一次扣10%
-    HEALTH_PENALTY: 0.2  // 有害虫/杂草扣20%
+    HEALTH_PENALTY: 0.05  // 有害虫/杂草扣20%
+  },
+
+  DISASTER: {
+    PROB_WEED: 40,
+    PROB_PEST: 40,
+    PROB_WATER: 40
   }
 };
 
 export const CROPS = [
-    // [Normal Land]
-    { 
-      type: 'radish', 
-      name: 'Radish', 
-      seedPrice: 10, 
-      sellPrice: 15, 
-      matureTime: 30, 
-      exp: 2, 
-      yield: 1,        
-      maxHarvests: 1, 
-      regrowTime: 0,
-      requiredLandType: 'normal'
-    },
-  { 
-    type: 'carrot', 
-    name: 'Carrot', 
-    seedPrice: 10, 
-    sellPrice: 25, 
-    matureTime: 60, 
-    yield: 1,        
+  // [Normal Land]
+  {
+    type: 'radish',
+    name: 'Radish',
+    seedPrice: 10,
+    sellPrice: 15,
+    matureTime: 30,
+    exp: 2,
+    yield: 1,
+    maxHarvests: 1,
+    regrowTime: 0,
+    requiredLandType: 'normal'
+  },
+  {
+    type: 'carrot',
+    name: 'Carrot',
+    seedPrice: 10,
+    sellPrice: 25,
+    matureTime: 60,
+    yield: 1,
     exp: 5,
     maxHarvests: 1,
     regrowTime: 0,
     requiredLandType: 'normal'
   },
-  { 
+  {
     type: 'potato',
-    name: 'Potato', 
-    seedPrice: 150, 
-    sellPrice: 280, 
-    matureTime: 600, 
-    exp: 40, 
+    name: 'Potato',
+    seedPrice: 150,
+    sellPrice: 280,
+    matureTime: 600,
+    exp: 40,
     yield: 2,
-    maxHarvests: 1, 
+    maxHarvests: 1,
     regrowTime: 0,
     requiredLandType: 'normal'
   },
-  { 
-    type: 'corn', 
-    name: 'Corn', 
-    seedPrice: 50, 
-    sellPrice: 60, 
-    matureTime: 120, 
-    exp: 10, 
+  {
+    type: 'corn',
+    name: 'Corn',
+    seedPrice: 50,
+    sellPrice: 60,
+    matureTime: 120,
+    exp: 10,
     yield: 2,
-    maxHarvests: 5,   
+    maxHarvests: 5,
     regrowTime: 60,
     requiredLandType: 'normal'
   },
   // [Red Land]
-  { 
-    type: 'strawberry', 
-    name: 'Strawberry', 
-    seedPrice: 80, 
-    sellPrice: 100, 
-    matureTime: 180, 
-    exp: 15, 
+  {
+    type: 'strawberry',
+    name: 'Strawberry',
+    seedPrice: 80,
+    sellPrice: 100,
+    matureTime: 180,
+    exp: 15,
     yield: 2,
-    maxHarvests: 3,   
+    maxHarvests: 3,
     regrowTime: 90,
     requiredLandType: 'red'
   },
-  { 
-    type: 'tomato', 
-    name: 'Tomato', 
-    seedPrice: 200, 
-    sellPrice: 180, 
-    matureTime: 300, 
-    exp: 25, 
+  {
+    type: 'tomato',
+    name: 'Tomato',
+    seedPrice: 200,
+    sellPrice: 180,
+    matureTime: 300,
+    exp: 25,
     yield: 3,
     maxHarvests: 4,
     regrowTime: 120,
     requiredLandType: 'red'
   },
-  { 
-    type: 'watermelon', 
-    name: 'Watermelon', 
-    seedPrice: 150, 
-    sellPrice: 120, 
-    matureTime: 300, 
-    exp: 25, 
+  {
+    type: 'watermelon',
+    name: 'Watermelon',
+    seedPrice: 150,
+    sellPrice: 120,
+    matureTime: 300,
+    exp: 25,
     yield: 3,
-    maxHarvests: 1,   
+    maxHarvests: 1,
     regrowTime: 0,
     requiredLandType: 'red'
   },
   // [Black Land]
-  { 
-    type: 'rose', 
-    name: 'Rose', 
-    seedPrice: 500, 
-    sellPrice: 1200, 
-    matureTime: 1800, 
-    exp: 100, 
+  {
+    type: 'rose',
+    name: 'Rose',
+    seedPrice: 500,
+    sellPrice: 1200,
+    matureTime: 1800,
+    exp: 100,
     yield: 1,
-    maxHarvests: 1, 
+    maxHarvests: 1,
     regrowTime: 0,
     requiredLandType: 'black'
   },
   // [Gold Land]
-  { 
-    type: 'ginseng', 
-    name: 'Ginseng', 
-    seedPrice: 5000, 
-    sellPrice: 20000, 
+  {
+    type: 'ginseng',
+    name: 'Ginseng',
+    seedPrice: 5000,
+    sellPrice: 20000,
     matureTime: 43200,
-    exp: 1000, 
+    exp: 1000,
     yield: 1,
-    maxHarvests: 1, 
+    maxHarvests: 1,
     regrowTime: 0,
     requiredLandType: 'gold'
   }

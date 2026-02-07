@@ -3,10 +3,10 @@
 import prisma from '../utils/prisma';
 import {
   redisClient,
-  QUEUE_SOCIAL_EVENTS,
   KEY_PREFIX_FOLLOWING,
   KEY_PREFIX_FOLLOWERS,
 } from '../utils/redis';
+import { socialQueue } from '../utils/queue';
 
 
 export class FollowService {
@@ -20,7 +20,7 @@ export class FollowService {
     const followersKey = `${KEY_PREFIX_FOLLOWERS}${userId}`;
 
     const pipeline = redisClient.multi();
-    
+
     pipeline.del(followingKey);
     pipeline.del(followersKey);
 
@@ -30,7 +30,7 @@ export class FollowService {
     if (followers.length > 0) {
       pipeline.sAdd(followersKey, followers.map(f => f.followerId));
     }
-    
+
     await pipeline.exec();
   }
 
@@ -51,22 +51,22 @@ export class FollowService {
 
     const followingKey = `${KEY_PREFIX_FOLLOWING}${followerId}`;
     const followersKey = `${KEY_PREFIX_FOLLOWERS}${followingId}`;
-    
+
     const pipeline = redisClient.multi();
-    pipeline.sAdd(followingKey, followingId); 
-    pipeline.sAdd(followersKey, followerId);  
+    pipeline.sAdd(followingKey, followingId);
+    pipeline.sAdd(followersKey, followerId);
     await pipeline.exec();
 
     const isMutual = await this.checkMutualFollow(followerId, followingId);
 
     const eventData = {
-        type: 'FOLLOW_EVENT',
-        followerId,
-        followingId,
-        isMutual,
-        timestamp: new Date().toISOString()
+      type: 'FOLLOW_EVENT',
+      followerId,
+      followingId,
+      isMutual,
+      timestamp: new Date().toISOString()
     };
-    await redisClient.lPush(QUEUE_SOCIAL_EVENTS, JSON.stringify(eventData));
+    await socialQueue.add('FOLLOW_EVENT', eventData);
 
     return { success: true, isMutual };
   }
@@ -99,8 +99,8 @@ export class FollowService {
    * 修复 TS 错误：显式转换 number (0/1) 为 boolean
    */
   static async checkMutualFollow(userA: string, userB: string): Promise<boolean> {
-    const keyA = `${KEY_PREFIX_FOLLOWING}${userA}`; 
-    const keyB = `${KEY_PREFIX_FOLLOWING}${userB}`; 
+    const keyA = `${KEY_PREFIX_FOLLOWING}${userA}`;
+    const keyB = `${KEY_PREFIX_FOLLOWING}${userB}`;
 
     // Redis 返回的是 number (0 或 1)
     const [aFollowsBRaw, bFollowsARaw] = await Promise.all([
@@ -145,11 +145,11 @@ export class FollowService {
     ]);
 
     const myFollowersKey = `${KEY_PREFIX_FOLLOWERS}${playerId}`;
-    
+
     // [修复点] 这里的 map 返回 Promise<number>[]，需要转换
     const checkPromises = follows.map(f => redisClient.sIsMember(myFollowersKey, f.followingId));
     const rawResults = await Promise.all(checkPromises);
-    const isMutualResults = rawResults.map(r => Boolean(r)); // 转为 boolean
+    const isMutualResults = rawResults.map((r: any) => Boolean(r)); // 转为 boolean
 
     const data = follows.map((f: any, index: number) => ({
       ...f.following,
@@ -182,11 +182,11 @@ export class FollowService {
     ]);
 
     const myFollowingKey = `${KEY_PREFIX_FOLLOWING}${playerId}`;
-    
+
     // [修复点] 转为 boolean
     const checkPromises = follows.map(f => redisClient.sIsMember(myFollowingKey, f.followerId));
     const rawResults = await Promise.all(checkPromises);
-    const isMutualResults = rawResults.map(r => Boolean(r));
+    const isMutualResults = rawResults.map((r: any) => Boolean(r));
 
     const data = follows.map((f: any, index: number) => ({
       ...f.follower,
@@ -212,7 +212,7 @@ export class FollowService {
     const friendIds = await redisClient.sInter([followingKey, followersKey]);
 
     if (friendIds.length === 0) {
-        return isPagination(page, limit) ? { data: [], pagination: { total: 0 } } : [];
+      return isPagination(page, limit) ? { data: [], pagination: { total: 0 } } : [];
     }
 
     let targetIds = friendIds;
@@ -220,26 +220,26 @@ export class FollowService {
     let paginationData = null;
 
     if (page !== undefined && limit !== undefined) {
-       const start = (page - 1) * limit;
-       const end = start + limit;
-       targetIds = friendIds.slice(start, end);
+      const start = (page - 1) * limit;
+      const end = start + limit;
+      targetIds = friendIds.slice(start, end);
 
-       paginationData = {
-           page, limit, total,
-           totalPages: Math.ceil(total / limit),
-           hasMore: end < total
-       };
+      paginationData = {
+        page, limit, total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: end < total
+      };
     }
 
     const friends = await prisma.player.findMany({
-        where: { id: { in: targetIds } },
-        orderBy: { createdAt: 'desc' }
+      where: { id: { in: targetIds } },
+      orderBy: { createdAt: 'desc' }
     });
 
     const resultData = friends.map(f => ({ ...f, isMutual: true }));
 
     if (paginationData) {
-        return { data: resultData, pagination: paginationData };
+      return { data: resultData, pagination: paginationData };
     }
     return resultData;
   }
@@ -263,5 +263,5 @@ export class FollowService {
 }
 
 function isPagination(page?: number, limit?: number): boolean {
-    return page !== undefined && limit !== undefined;
+  return page !== undefined && limit !== undefined;
 }
