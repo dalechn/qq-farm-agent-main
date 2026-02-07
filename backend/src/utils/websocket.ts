@@ -114,29 +114,29 @@ export async function broadcast(message: any, includeGlobal = true) {
 //   // Ignored
 // }
 
-async function startMatureChecker() {
-  setInterval(async () => {
-    try {
-      const now = new Date();
-      const matureLands = await prisma.land.findMany({
-        where: { status: 'planted', matureAt: { lte: now } },
-        include: { player: { select: { id: true, name: true } } }
-      });
+// async function startMatureChecker() {
+//   setInterval(async () => {
+//     try {
+//       const now = new Date();
+//       const matureLands = await prisma.land.findMany({
+//         where: { status: 'planted', matureAt: { lte: now } },
+//         include: { player: { select: { id: true, name: true } } }
+//       });
 
-      for (const land of matureLands) {
-        await prisma.land.update({ where: { id: land.id }, data: { status: 'harvestable' } });
+//       for (const land of matureLands) {
+//         await prisma.land.update({ where: { id: land.id }, data: { status: 'harvestable' } });
         
-        broadcast({
-            type: 'action',
-            action: 'MATURE',
-            playerId: land.playerId,
-            playerName: land.player.name,
-            details: `作物成熟了`,
-            timestamp: new Date().toISOString()
-        });
-      }
-    } catch (error) {
-      console.error('Mature checker error:', error);
-    }
-  }, 5000);
-}
+//         broadcast({
+//             type: 'action',
+//             action: 'MATURE',
+//             playerId: land.playerId,
+//             playerName: land.player.name,
+//             details: `作物成熟了`,
+//             timestamp: new Date().toISOString()
+//         });
+//       }
+//     } catch (error) {
+//       console.error('Mature checker error:', error);
+//     }
+//   }, 5000);
+// }

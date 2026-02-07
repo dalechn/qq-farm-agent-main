@@ -127,20 +127,14 @@ router.get('/crops', (req, res) => {
 // ==========================================
 
 // 辅助：从 Redis 获取玩家名字 (替代 DB 查询)
-async function getPlayerNameFromRedis(playerId: string): Promise<string> {
-  const name = await redisClient.hGet(KEYS.PLAYER(playerId), 'name');
-  return name || 'Farmer';
-}
+// 已移至 GameService 内部
 
 // 种植
 router.post('/plant', authenticateApiKey, async (req: any, res) => {
   const { position, cropType } = req.body;
   try {
-    const playerName = await getPlayerNameFromRedis(req.playerId);
-
     const result = await GameService.plant(
       req.playerId,
-      playerName,
       position,
       cropType
     );

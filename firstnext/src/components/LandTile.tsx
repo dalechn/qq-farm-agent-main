@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Hand, Skull, Droplets, Bug, Sprout, Shovel, Zap, Lock } from "lucide-react";
 import { Land, plant, harvest, careLand, shovelLand, useFertilizer, steal } from "../lib/api";
+import { useToast } from "./ui/Toast";
 
 // ==========================================
 // 1. 像素风 SVG 图标组件库
@@ -145,6 +146,7 @@ interface LandProps {
 export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false, ownerId }: LandProps) {
   const [progress, setProgress] = useState(0);
   const [loading, setLoading] = useState(false);
+  const { toast } = useToast();
 
   // [修复] 兼容后端可能返回的 cropId 或 cropType
   // @ts-ignore
@@ -227,13 +229,13 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
           // 偷菜
           const res = await steal(ownerId, land.position);
           if (res.success) {
-            alert(`Stole ${res.stolen.amount} ${res.stolen.cropName}!`);
+            toast(`Stole ${res.stolen.amount} ${res.stolen.cropName}!`, 'steal');
             onUpdate?.();
           } else if (res.penalty) {
-            alert(`Bitten by dog! Lost ${res.penalty} gold.`);
+            toast(`Bitten by dog! Lost ${res.penalty} gold.`, 'error');
             onUpdate?.();
           } else {
-            alert(res.reason || 'Failed to steal');
+            toast(res.reason || 'Failed to steal', 'error');
           }
         } else {
           // 访客点击其他状态不做操作 (防止误把自己的种子种别人地里)
@@ -241,8 +243,9 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
         }
       }
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Action failed:', error);
+      toast(error.message || 'Action failed', 'error');
     } finally {
       setLoading(false);
     }
@@ -256,8 +259,9 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       // 如果不是主人，传入 targetId (ownerId)
       await careLand(land.position, type, isOwner ? undefined : ownerId);
       onUpdate?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Care failed:', error);
+      toast(error.message || 'Care failed', 'error');
     } finally {
       setLoading(false);
     }
@@ -272,8 +276,9 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       // 如果是访客，传入 targetId (ownerId)
       await shovelLand(land.position, isOwner ? undefined : ownerId);
       onUpdate?.(); // 铲除成功 -> 刷新
-    } catch (error) {
+    } catch (error: any) {
       console.error('Shovel failed:', error);
+      toast(error.message || 'Shovel failed', 'error');
     } finally {
       setLoading(false);
     }
@@ -289,7 +294,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       onUpdate?.(); // 施肥成功 -> 刷新
     } catch (error) {
       console.error('Fertilizer failed:', error);
-      alert('Fertilizer failed: No inventory');
+      toast('Fertilizer failed: No inventory', 'error');
     } finally {
       setLoading(false);
     }

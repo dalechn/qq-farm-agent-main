@@ -2,9 +2,10 @@
 
 import { GameProvider, useGame } from "@/context/GameContext";
 import { I18nProvider } from "@/lib/i18n";
+import { ToastProvider } from "@/components/ui/Toast";
 import { GameHeader } from "@/components/nav/GameHeader";
 import { ShopModal } from "@/components/nav/ShopModal";
-import { LogSidebar } from "@/components/LogSidebar"; 
+import { LogSidebar } from "@/components/LogSidebar";
 // 注意：如果 LogSidebar 依赖特定页面逻辑，可以留在 Dashboard，
 // 但既然 GameHeader 在全局控制它，建议把 Activity/LogSidebar 也做成全局的。
 
@@ -46,10 +47,10 @@ function GameLayoutContent({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* 全局模态框 */}
-      <ShopModal 
-        isOpen={isShopOpen} 
-        onClose={() => setIsShopOpen(false)} 
-        crops={crops} 
+      <ShopModal
+        isOpen={isShopOpen}
+        onClose={() => setIsShopOpen(false)}
+        crops={crops}
       />
 
       {/* 移动端日志侧边栏 (可选：如果你希望它也是全局的) */}
@@ -72,7 +73,9 @@ export function GameLayout({ children }: { children: React.ReactNode }) {
   return (
     <GameProvider>
       <I18nProvider>
-        <GameLayoutContent>{children}</GameLayoutContent>
+        <ToastProvider>
+          <GameLayoutContent>{children}</GameLayoutContent>
+        </ToastProvider>
       </I18nProvider>
     </GameProvider>
   );

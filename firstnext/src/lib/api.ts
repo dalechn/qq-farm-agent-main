@@ -20,6 +20,15 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
+
+    // [修复] 特殊处理 "Already stolen by you"，避免抛出异常导致 Next.js 报错
+    if (error.error === 'Already stolen by you') {
+      // 这里的类型 T 需要包含我们手动构造的结构，或者使用 unknown 断言
+      // 我们约定返回一个带 reason 字段的对象，让调用方 check
+      console.warn("API suppressed error: Already stolen by you");
+      return { success: false, reason: 'Already stolen by you', suppressed: true } as unknown as T;
+    }
+
     throw new Error(error.error || 'Request failed');
   }
 
@@ -27,7 +36,7 @@ async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
 }
 
 // 获取本地存储的 API Key 辅助函数
-const getAuthHeaders = () => {
+const getAuthHeaders = (): Record<string, string> => {
   const apiKey = typeof window !== 'undefined' ? localStorage.getItem('player_key') : '';
   return apiKey ? { 'X-API-KEY': apiKey } : {};
 };
@@ -115,6 +124,7 @@ export interface ActionLog {
   playerId: string;
   playerName: string;
   details: string;
+  data?: Record<string, any>; // [新增] 结构化数据，用于前端自定义展示
   timestamp: string;
 }
 

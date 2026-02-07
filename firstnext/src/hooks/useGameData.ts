@@ -16,7 +16,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const [crops, setCrops] = useState<Crop[]>([]);
   const [logs, setLogs] = useState<ActionLog[]>([]);
   const [myPlayer, setMyPlayer] = useState<Player | null>(null);
-  
+
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,13 +42,13 @@ export function useGameData(options: UseGameDataOptions = {}) {
       }
       return p;
     }));
-    
+
     // 使用函数式更新来检查 prevMyPlayer，无需将 myPlayer 加入依赖数组
     setMyPlayer(prevMyPlayer => {
-        if (prevMyPlayer && prevMyPlayer.id === updatedPlayer.id) {
-            return updatedPlayer;
-        }
-        return prevMyPlayer;
+      if (prevMyPlayer && prevMyPlayer.id === updatedPlayer.id) {
+        return updatedPlayer;
+      }
+      return prevMyPlayer;
     });
   }, []); // 依赖数组为空，函数引用永远稳定
 
@@ -57,17 +57,17 @@ export function useGameData(options: UseGameDataOptions = {}) {
     try {
       if (isLoadMore) setIsFetchingMorePlayers(true);
       const response = await publicApi.getPlayers(pageNum, 20);
-      
+
       if (isLoadMore) {
         setPlayers(prev => {
-            const existingIds = new Set(prev.map(p => p.id));
-            const newPlayers = response.data.filter(p => !existingIds.has(p.id));
-            return [...prev, ...newPlayers];
+          const existingIds = new Set(prev.map(p => p.id));
+          const newPlayers = response.data.filter(p => !existingIds.has(p.id));
+          return [...prev, ...newPlayers];
         });
       } else {
         setPlayers(response.data);
       }
-      
+
       setTotalPlayersCount(response.pagination.total);
       setHasMorePlayers(response.pagination.hasMore);
       setError(null);
@@ -98,14 +98,14 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const fetchLogs = useCallback(async (pageNum: number, isLoadMore = false, playerId?: string) => {
     try {
       if (isLoadMore) setIsFetchingMoreLogs(true);
-      
+
       const response = await publicApi.getLogs(playerId, pageNum, 50);
-      
+
       if (isLoadMore) {
         setLogs(prev => {
-            const existingIds = new Set(prev.map(l => l.id));
-            const newLogs = response.data.filter(l => (l.id ? !existingIds.has(l.id) : true));
-            return [...prev, ...newLogs];
+          const existingIds = new Set(prev.map(l => l.id));
+          const newLogs = response.data.filter(l => (l.id ? !existingIds.has(l.id) : true));
+          return [...prev, ...newLogs];
         });
       } else {
         setLogs(response.data);
@@ -129,28 +129,28 @@ export function useGameData(options: UseGameDataOptions = {}) {
   // 获取“我”的信息
   const fetchMe = useCallback(async () => {
     if (typeof window !== 'undefined' && localStorage.getItem('player_key')) {
-        try {
-            const me = await getMe();
-            setMyPlayer(me);
-        } catch (e) {
-            console.error("Failed to fetch my info (invalid key?)", e);
-        }
+      try {
+        const me = await getMe();
+        setMyPlayer(me);
+      } catch (e) {
+        console.error("Failed to fetch my info (invalid key?)", e);
+      }
     }
   }, []);
 
   const refreshLogs = useCallback(() => {
-    setLogPage(1); 
-    fetchLogs(1);  
+    setLogPage(1);
+    fetchLogs(1);
   }, [fetchLogs]);
 
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
       await Promise.all([
-          fetchPlayers(1), 
-          fetchCrops(), 
-          fetchLogs(1),
-          fetchMe() 
+        fetchPlayers(1),
+        fetchCrops(),
+        fetchLogs(1),
+        fetchMe()
       ]);
       setIsLoading(false);
     };
@@ -160,8 +160,24 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     switch (message.type) {
       case 'player_joined':
-         setTotalPlayersCount(prev => prev + 1);
-         break;
+        setTotalPlayersCount(prev => prev + 1);
+        break;
+      // case 'action':
+      //   // [新增] 实时接收广播并追加到日志列表
+      //   // 构造 ActionLog 对象
+      //   const newLog: ActionLog = {
+      //     id: `ws-${Date.now()}-${Math.random()}`, // 临时 ID
+      //     type: 'action',
+      //     action: message.action,
+      //     playerId: message.playerId,
+      //     playerName: message.playerName || 'Unknown',
+      //     details: message.details,
+      //     data: message.data,
+      //     timestamp: new Date().toISOString()
+      //   };
+
+      //   setLogs(prev => [newLog, ...prev]);
+      //   break;
       default:
         break;
     }
@@ -172,7 +188,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
   });
 
   const stats = {
-    totalPlayers: totalPlayersCount, 
+    totalPlayers: totalPlayersCount,
     loadedCount: players.length,
     harvestableCount: players.reduce(
       (sum, p) => sum + p.lands.filter((l) => l.status === 'harvestable').length,
@@ -187,7 +203,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
     logs,
     stats,
     isLoading,
-    
+
     isFetchingMorePlayers,
     hasMorePlayers,
     loadMorePlayers,
@@ -195,18 +211,18 @@ export function useGameData(options: UseGameDataOptions = {}) {
     isFetchingMoreLogs,
     hasMoreLogs,
     loadMoreLogs,
-    refreshLogs, 
-    
-    updatePlayer, 
+    refreshLogs,
+
+    updatePlayer,
     fetchMe,
 
     error,
     isConnected,
-    refresh: () => { 
-      setPlayerPage(1); 
-      setLogPage(1); 
-      fetchPlayers(1); 
-      fetchLogs(1); 
+    refresh: () => {
+      setPlayerPage(1);
+      setLogPage(1);
+      fetchPlayers(1);
+      fetchLogs(1);
       fetchMe();
     },
   };

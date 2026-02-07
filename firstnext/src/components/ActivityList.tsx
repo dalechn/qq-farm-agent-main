@@ -1,7 +1,8 @@
 import { useState, forwardRef } from "react";
-import { Virtuoso, type VirtuosoHandle } from "react-virtuoso"; 
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Loader2 } from "lucide-react";
 import { type ActionLog } from "@/lib/api";
+import { formatActionLog } from "@/lib/format";
 
 export function getActionColor(action: string) {
   const map: Record<string, string> = {
@@ -22,12 +23,12 @@ interface ActivityListProps {
 }
 
 // [修改] 使用 forwardRef 包裹组件，以便父组件可以控制滚动
-export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({ 
-  logs, 
-  onPlayerClick, 
-  hasMore, 
-  onLoadMore, 
-  isLoadingMore 
+export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
+  logs,
+  onPlayerClick,
+  hasMore,
+  onLoadMore,
+  isLoadingMore
 }, ref) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
@@ -39,19 +40,19 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
     <Virtuoso
       ref={ref} // [关键] 绑定 Ref
       className="custom-scrollbar" // 自定义滚动条样式
-      style={{ height: "100%" }} 
+      style={{ height: "100%" }}
       data={logs}
-      
+
       // 触底自动加载
       endReached={() => {
         if (hasMore && !isLoadingMore) {
           onLoadMore();
         }
       }}
-      
+
       // 预渲染区域高度
-      overscan={200} 
-      
+      overscan={200}
+
       // 底部 Loading 指示器
       components={{
         Footer: () => (
@@ -72,10 +73,10 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
       // 列表项渲染
       itemContent={(index, log) => {
         const isExpanded = expandedId === log.id;
-        
+
         return (
-          <div 
-            onClick={() => setExpandedId(isExpanded ? null : log.id)}
+          <div
+            onClick={() => setExpandedId(isExpanded ? null : (log.id || null))}
             className={`
               p-3 text-xs border-b border-stone-800/50 transition-all duration-200 flex flex-col gap-1 cursor-pointer group
               ${isExpanded ? 'bg-stone-800 border-l-2 border-l-orange-500 pl-[10px]' : 'bg-stone-900/40 hover:bg-stone-800 border-l-2 border-l-transparent'}
@@ -87,9 +88,9 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
               </span>
               <span className={`font-bold ${getActionColor(log.action)} bg-stone-950/50 px-1 rounded`}>{log.action}</span>
             </div>
-            
+
             <div className={`text-stone-400 ${isExpanded ? 'whitespace-normal break-words' : 'truncate'}`}>
-              <span 
+              <span
                 className="text-orange-500 font-bold mr-2 hover:underline hover:text-orange-400 relative z-10"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -99,7 +100,7 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
                 {log.playerName}
               </span>
               <span className="text-stone-500 group-hover:text-stone-300 transition-colors">
-                {log.details}
+                {formatActionLog(log)}
               </span>
             </div>
           </div>

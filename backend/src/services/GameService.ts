@@ -15,6 +15,11 @@ export class GameService {
   // 缓存与加载逻辑
   // ==========================================
 
+  private static async getPlayerName(playerId: string): Promise<string> {
+    const name = await redisClient.hGet(KEYS.PLAYER(playerId), 'name');
+    return name || 'Farmer';
+  }
+
   private static async ensurePlayerLoaded(playerId: string) {
     const playerKey = KEYS.PLAYER(playerId);
     if (await redisClient.exists(playerKey)) return;
@@ -120,7 +125,16 @@ export class GameService {
       });
       const affected = res as number[];
       if (affected && affected.length > 0) {
-        broadcast({ type: 'action', action: 'DISASTER', playerId, details: 'Farm status updated!', data: { positions: affected } });
+        broadcast({
+          type: 'action',
+          action: 'DISASTER',
+          playerId,
+          details: 'Farm status updated!',
+          data: {
+            positions: affected,
+            type: 'disaster'
+          }
+        });
       }
     } catch (e) { }
   }
@@ -128,8 +142,9 @@ export class GameService {
   // ==========================================
   // 1. 种植
   // ==========================================
-  static async plant(playerId: string, playerName: string, position: number, cropId: string) {
+  static async plant(playerId: string, position: number, cropId: string) {
     await this.ensurePlayerLoaded(playerId);
+    const playerName = await this.getPlayerName(playerId);
 
     const crop = CROPS.find(c => c.type === cropId);
     if (!crop) throw new Error('Invalid crop');
@@ -160,13 +175,28 @@ export class GameService {
 
     const isLevelUp = (res as any)[1] === 'true';
     if (isLevelUp) {
-      broadcast({ type: 'action', action: 'LEVEL_UP', playerId, playerName, details: 'Level Up!' });
+      broadcast({
+        type: 'action',
+        action: 'LEVEL_UP',
+        playerId,
+        playerName, // Ensure playerName is passed if available
+        details: 'Level Up!',
+        data: { level: 'unknown' } // Lua doesn't return new level, might need to fetch or just notify
+      });
     }
 
     broadcast({
       type: 'action', action: 'PLANT', playerId, playerName,
       details: `Planted ${crop.name}`,
-      data: { position, matureAt, cropId, remainingHarvests: maxHarvests, expGain }
+      data: {
+        position,
+        matureAt,
+        cropId,
+        cropName: crop.name,
+        remainingHarvests: maxHarvests,
+        expGain,
+        level: requiredLevelIndex
+      }
     });
 
     return { success: true, matureAt, expGain };
@@ -210,10 +240,19 @@ export class GameService {
       broadcast({ type: 'action', action: 'LEVEL_UP', playerId, details: 'Level Up!' });
     }
 
+    const playerName = await this.getPlayerName(playerId);
     broadcast({
-      type: 'action', action: 'HARVEST', playerId,
+      type: 'action', action: 'HARVEST', playerId, playerName,
       details: `Harvested ${crop.name}`,
-      data: { position, gold: finalGold, exp: finalExp, quality: parseFloat(finalRateStr), remainingHarvests: nextRemaining }
+      data: {
+        position,
+        gold: finalGold,
+        exp: finalExp,
+        quality: parseFloat(finalRateStr),
+        cropId: crop.type,
+        cropName: crop.name,
+        remainingHarvests: nextRemaining
+      }
     });
 
     return { success: true, gold: finalGold, exp: finalExp, remainingHarvests: nextRemaining };
@@ -258,7 +297,26 @@ export class GameService {
       this.checkLuaError(res);
       // Lua 成功返回的是 stolenCount，但我们不需要在这里用到它
 
-      broadcast({ type: 'action', action: 'STEAL', playerId: stealerId, details: `Stole from player`, data: { gold: stealAmount } });
+      const [stealerName, victimName] = await Promise.all([
+        this.getPlayerName(stealerId),
+        this.getPlayerName(victimId)
+      ]);
+
+      broadcast({
+        type: 'action',
+        action: 'STEAL',
+        playerId: stealerId,
+        playerName: stealerName,
+        details: `Stole from player`,
+        data: {
+          gold: stealAmount,
+          victimId,
+          victimName,
+          cropId: crop!.type, // Add checks if needed, but crop should be defined here
+          cropName: crop!.name,
+          amount: 1
+        }
+      });
 
       // [修复] 返回前端需要的完整数据结构
       return {
@@ -273,7 +331,18 @@ export class GameService {
 
     } catch (e: any) {
       if (e.message === 'Bitten by dog') {
-        broadcast({ type: 'action', action: 'DOG_BITE', playerId: stealerId, details: `Bitten by dog! Lost ${BITE_PENALTY} gold.`, data: { penalty: BITE_PENALTY } });
+        const stealerName = await this.getPlayerName(stealerId);
+        broadcast({
+          type: 'action',
+          action: 'DOG_BITE',
+          playerId: stealerId,
+          playerName: stealerName,
+          details: `Bitten by dog! Lost ${BITE_PENALTY} gold.`,
+          data: {
+            penalty: BITE_PENALTY,
+            victimId
+          }
+        });
         return { success: false, reason: 'bitten', penalty: BITE_PENALTY };
       }
       throw e;
@@ -303,7 +372,20 @@ export class GameService {
       broadcast({ type: 'action', action: 'LEVEL_UP', playerId: operatorId, details: 'Level Up!' });
     }
 
-    broadcast({ type: 'action', action: 'CARE', playerId: operatorId, details: `Helped with ${type}`, data: { position, type, xpGain: actualExpGain } });
+    broadcast({
+      type: 'action',
+      action: 'CARE',
+      playerId: operatorId,
+      playerName: await this.getPlayerName(operatorId),
+      details: `Helped with ${type}`,
+      data: {
+        position,
+        type,
+        xpGain: actualExpGain,
+        ownerId,
+        ownerName: operatorId !== ownerId ? await this.getPlayerName(ownerId) : undefined
+      }
+    });
     return { success: true, xpGain: actualExpGain };
   }
 
@@ -335,8 +417,14 @@ export class GameService {
       type: 'action',
       action: 'SHOVEL',
       playerId: operatorId,
+      playerName: await this.getPlayerName(operatorId),
       details: operatorId === ownerId ? 'Cleared land' : 'Helped clear land',
-      data: { position, expGain, ownerId }
+      data: {
+        position,
+        expGain,
+        ownerId,
+        ownerName: operatorId !== ownerId ? await this.getPlayerName(ownerId) : undefined
+      }
     });
     return { success: true, expGain };
   }
@@ -350,7 +438,18 @@ export class GameService {
     if (!upgradeConfig || !upgradeConfig.next) throw new Error('Max level reached');
     const res = await redisClient.eval(LUA_SCRIPTS.UPGRADE_LAND, { keys: [landKey, KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS], arguments: [upgradeConfig.price.toString(), upgradeConfig.next, upgradeConfig.levelReq.toString()] });
     this.checkLuaError(res);
-    broadcast({ type: 'action', action: 'UPGRADE_LAND', playerId, details: `Upgraded to ${upgradeConfig.next}`, data: { position, landType: upgradeConfig.next } });
+    broadcast({
+      type: 'action',
+      action: 'UPGRADE_LAND',
+      playerId,
+      playerName: await this.getPlayerName(playerId),
+      details: `Upgraded to ${upgradeConfig.next}`,
+      data: {
+        position,
+        landType: upgradeConfig.next,
+        cost: upgradeConfig.price
+      }
+    });
     return { success: true, newType: upgradeConfig.next };
   }
 
@@ -362,7 +461,18 @@ export class GameService {
     const newPos = currentCount;
     const res = await redisClient.eval(LUA_SCRIPTS.EXPAND_LAND, { keys: [KEYS.PLAYER(playerId), KEYS.LAND(playerId, newPos), KEYS.DIRTY_PLAYERS, KEYS.DIRTY_LANDS], arguments: [cost.toString(), GAME_CONFIG.LAND.MAX_LIMIT.toString(), `${playerId}:${newPos}`] });
     this.checkLuaError(res);
-    broadcast({ type: 'action', action: 'EXPAND_LAND', playerId, details: `Expanded farm`, data: { position: newPos, landCount: currentCount + 1 } });
+    broadcast({
+      type: 'action',
+      action: 'EXPAND_LAND',
+      playerId,
+      playerName: await this.getPlayerName(playerId),
+      details: `Expanded farm`,
+      data: {
+        position: newPos,
+        landCount: currentCount + 1,
+        cost
+      }
+    });
     return { success: true, position: newPos };
   }
 
@@ -372,7 +482,18 @@ export class GameService {
     const res = await redisClient.eval(LUA_SCRIPTS.FERTILIZE, { keys: [KEYS.LAND(playerId, position), KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS], arguments: [config.price.toString(), config.reduceSeconds.toString(), Date.now().toString()] });
     this.checkLuaError(res);
     const newMatureAt = (res as any)[0];
-    broadcast({ type: 'action', action: 'FERTILIZE', playerId, details: `Used fertilizer`, data: { position, matureAt: newMatureAt } });
+    broadcast({
+      type: 'action',
+      action: 'FERTILIZE',
+      playerId,
+      playerName: await this.getPlayerName(playerId),
+      details: `Used fertilizer`,
+      data: {
+        position,
+        matureAt: newMatureAt,
+        type
+      }
+    });
     return { success: true, matureAt: newMatureAt };
   }
 
@@ -382,7 +503,17 @@ export class GameService {
     const price = isFeed ? FOOD_PRICE : PRICE;
     const res = await redisClient.eval(LUA_SCRIPTS.BUY_OR_FEED_DOG, { keys: [KEYS.PLAYER(playerId), KEYS.DIRTY_PLAYERS], arguments: [price.toString(), FOOD_DURATION.toString(), Date.now().toString(), isFeed ? 'true' : 'false'] });
     this.checkLuaError(res);
-    broadcast({ type: 'action', action: isFeed ? 'FEED_DOG' : 'BUY_DOG', playerId, details: isFeed ? 'Fed the dog' : 'Bought a dog' });
+    broadcast({
+      type: 'action',
+      action: isFeed ? 'FEED_DOG' : 'BUY_DOG',
+      playerId,
+      playerName: await this.getPlayerName(playerId),
+      details: isFeed ? 'Fed the dog' : 'Bought a dog',
+      data: {
+        price,
+        isFeed
+      }
+    });
     return { success: true };
   }
 
