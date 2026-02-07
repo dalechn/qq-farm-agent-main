@@ -102,10 +102,10 @@ export const KEY_GLOBAL_LOGS = 'farm:v2:global_logs';
 export const KEY_PLAYER_LOGS_PREFIX = 'farm:v2:player_logs:';
 
 // ==================== 社交关注 Key 配置 (Social Dedicated) ====================
-// export const SOCIAL_KEYS = {
-//   FOLLOWING: 'social:v2:following:',  // ZSET: score=ts, value=playerId
-//   FOLLOWERS: 'social:v2:followers:',  // ZSET: score=ts, value=playerId
-//   MQ_EVENTS: 'mq:social:events',      // Stream Key
-//   GROUP_NAME: 'group:social:sync',    // Consumer Group (Social Specific)
-//   CONSUMER_NAME: `consumer:social:${process.env.HOSTNAME || 'worker-1'}`
-// };
+export const SOCIAL_KEYS = {
+  FOLLOWING: 'social:v2:following:',  // ZSET: score=ts, value=playerId
+  FOLLOWERS: 'social:v2:followers:',  // ZSET: score=ts, value=playerId
+  MQ_EVENTS: 'mq:social:events',      // Stream Key
+  GROUP_NAME: 'group:social:sync',    // Consumer Group (Social Specific)
+  CONSUMER_NAME: `consumer:social:${process.env.HOSTNAME || 'worker-1'}`
+};

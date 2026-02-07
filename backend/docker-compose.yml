@@ -42,7 +42,7 @@ services:
   # 处理游戏逻辑、WebSocket 连接
   game-server:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     container_name: qq-farm-game
     environment:
@@ -63,55 +63,14 @@ services:
       - farm-network
     restart: unless-stopped
 
-  # 2. 认证/注册服 (Auth Server)
-  # 独立处理注册请求，防止大量注册卡顿游戏
-  auth-server:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: qq-farm-auth
-    environment:
-      NODE_ENV: production
-      SERVICE_NAME: auth  # 指定启动模式
-      AUTH_PORT: 3002
-      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
-      REDIS_URL: redis://redis:6379
-    ports:
-      - "3002:3002"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - farm-network
-    restart: unless-stopped
 
-  # 3. [新增] 社交 Worker (BullMQ)
-  # 专门处理通知、邮件、互粉逻辑
-  worker-social:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    container_name: qq-farm-worker-social
-    environment:
-      NODE_ENV: production
-      SERVICE_NAME: worker-social
-      HOSTNAME: worker-social
-      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - farm-network
-    restart: unless-stopped
+
 
   # 4. [新增] 同步 Worker (Redis Loop)
   # 专门处理脏数据回写 (Write-Behind)
   worker-sync:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     container_name: qq-farm-worker-sync
     environment:
@@ -133,7 +92,7 @@ services:
   # 专门处理游戏日志批量写入
   worker-logs:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     container_name: qq-farm-worker-logs
     environment:

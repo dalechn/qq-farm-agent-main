@@ -4,7 +4,6 @@ import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { FollowService } from '../services/FollowService';
 import { authenticateApiKey } from '../middleware/auth';
-import { broadcast } from '../utils/websocket';
 
 const router: Router = Router();
 

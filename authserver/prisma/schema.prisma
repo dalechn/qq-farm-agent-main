@@ -1,0 +1,91 @@
+// 
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Player {
+  id        String   @id @default(uuid())
+  // [修改] 添加 @unique 约束防止重名
+  name      String   @unique
+  apiKey    String   @unique @default(cuid())
+  gold      Int      @default(1000)
+  exp       Int      @default(0)
+  level     Int      @default(1)
+  
+  // [修改] 废弃 Land 表，改用 JSONB 存储所有土地数据
+  // 结构: Array<{ position: number, status: string, cropType: string, ... }>
+  lands     Json     @default("[]")
+  
+  // 土地数量上限 (用于控制 JSON 数组长度)
+  landCount Int      @default(6)
+ 
+  // 看守狗系统
+  hasDog         Boolean   @default(false)
+  dogActiveUntil DateTime?
+
+  avatar    String   @default("https://robohash.org/default.png?set=set1")
+  twitter   String?
+  createdAt DateTime @default(now())
+  
+  // 关注关系
+  following Follow[] @relation("Following") 
+  followers Follow[] @relation("Followers") 
+  
+  notifications Notification[]
+  logs      GameLog[]
+}
+
+model Crop {
+  type       String @id
+  name       String
+  seedPrice  Int
+  sellPrice  Int
+  matureTime Int
+  exp        Int
+  yield      Int    @default(1)
+  requiredLandType String @default("normal")
+  requiredLevel Int @default(1)
+  maxHarvests Int    @default(1) 
+  regrowTime  Int    @default(0) 
+}
+
+model Follow {
+  id          Int    @id @default(autoincrement())
+  follower    Player   @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  followerId  String   
+  following   Player   @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade)
+  followingId String   
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId  String
+  type      String   
+  message   String
+  data      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model GameLog {
+  id        Int      @id @default(autoincrement())
+  player    Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
+  playerId  String?  // 允许为空 (系统日志)
+  
+  action    String   // 操作类型 e.g. "HARVEST"
+  details   Json     // 完整日志详情 (JSONB)
+  
+  createdAt DateTime @default(now())
+
+  @@index([playerId])
+  @@index([createdAt])
+  @@index([action])
+}

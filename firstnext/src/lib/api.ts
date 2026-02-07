@@ -316,9 +316,9 @@ export const publicApi = {
   getLeaderboard: (page = 1, limit = 20, sort: 'gold' | 'active' | 'level' = 'gold') =>
     request<PaginatedPlayers>(`/leaderboard?page=${page}&limit=${limit}&sort=${sort}`),
 
-  // [修改] Logs 指向 Auth Server
+  // [修改] Logs 指向 Game Server
   getLogs: (playerId?: string, page = 1, limit = 50) =>
-    requestAuth<PaginatedLogs>(
+    request<PaginatedLogs>(
       playerId
         ? `/logs?playerId=${playerId}&page=${page}&limit=${limit}`
         : `/logs?page=${page}&limit=${limit}`

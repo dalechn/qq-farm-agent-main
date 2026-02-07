@@ -5,9 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn src/index.ts",
-    "start": "ts-node src/index.ts",
-    "start:worker-sync": "ts-node src/worker-sync.ts",
-    "start:worker-logs": "ts-node src/worker-logs.ts",
+    "start": "node dist/index.js",
+    "start:worker-social": "node dist/worker-social.js",
     "build": "tsc",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push"
@@ -17,30 +16,26 @@
     "farm",
     "agent",
     "api",
-    "prisma"
+    "prisma",
+    "auth"
   ],
   "license": "MIT",
   "dependencies": {
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
-    "bullmq": "^5.67.3",
     "cors": "^2.8.6",
     "dotenv": "^16.5.0",
     "express": "^5.2.1",
-    "ioredis": "^5.9.2",
     "pg": "^8.18.0",
     "redis": "^5.10.0",
-    "uuid": "^13.0.0",
-    "ws": "^8.19.0"
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
-    "@types/ioredis": "^4.28.10",
     "@types/node": "^25.2.0",
     "@types/pg": "^8.16.0",
     "@types/uuid": "^11.0.0",
-    "@types/ws": "^8.18.1",
     "nodemon": "^3.1.11",
     "prisma": "^7.3.0",
     "tsx": "^4.21.0",

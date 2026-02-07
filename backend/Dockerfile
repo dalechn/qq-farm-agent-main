@@ -31,11 +31,7 @@ EXPOSE 3001 3002
 # 1. 运行 prisma db push 确保数据库结构同步
 # 2. 根据环境变量判断启动游戏主服、认证服或 Worker
 CMD ["sh", "-c", "npx prisma db push && \
-    if [ \"$SERVICE_NAME\" = \"auth\" ]; then \
-        node dist/auth-server.js; \
-    elif [ \"$SERVICE_NAME\" = \"worker-social\" ]; then \
-        node dist/worker-social.js; \
-    elif [ \"$SERVICE_NAME\" = \"worker-logs\" ]; then \
+    if [ \"$SERVICE_NAME\" = \"worker-logs\" ]; then \
         node dist/worker-logs.js; \
     elif [ \"$SERVICE_NAME\" = \"worker-sync\" ]; then \
         node dist/worker-sync.js; \
