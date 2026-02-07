@@ -48,7 +48,11 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
     updatePlayer,
     // [新增] 获取排序状态
     sortBy,
-    setSortBy
+
+    setSortBy,
+    // [新增] 刷新
+    refreshPlayers,
+    isRefreshingPlayers
   } = useGame();
 
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
@@ -206,7 +210,10 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         stats={stats}
         isHiddenOnMobile={!!initialUsername}
         sortBy={sortBy}       // [新增]
+
         onSortChange={setSortBy} // [新增]
+        onRefresh={refreshPlayers} // [新增]
+        isRefreshing={isRefreshingPlayers} // [新增]
       />
 
       {/* 2. 视口 */}

@@ -35,6 +35,8 @@ CMD ["sh", "-c", "npx prisma db push && \
         node dist/auth-server.js; \
     elif [ \"$SERVICE_NAME\" = \"worker-social\" ]; then \
         node dist/worker-social.js; \
+    elif [ \"$SERVICE_NAME\" = \"worker-logs\" ]; then \
+        node dist/worker-logs.js; \
     elif [ \"$SERVICE_NAME\" = \"worker-sync\" ]; then \
         node dist/worker-sync.js; \
     else \

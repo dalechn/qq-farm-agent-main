@@ -14,16 +14,7 @@ import {
 
 const CROP_COMPONENTS = CROP_ICONS;
 
-const CROP_CONFIG: Record<string, { color: string; name: string }> = {
-  radish: { color: "text-slate-200", name: "Radish" },
-  carrot: { color: "text-orange-300", name: "Carrot" },
-  potato: { color: "text-yellow-600", name: "Potato" },
-  corn: { color: "text-yellow-300", name: "Corn" },
-  strawberry: { color: "text-red-300", name: "Berry" },
-  tomato: { color: "text-red-500", name: "Tomato" },
-  watermelon: { color: "text-green-300", name: "Melon" },
-  pumpkin: { color: "text-orange-500", name: "Pumpkin" },
-};
+
 
 interface LandProps {
   land?: Land;
@@ -288,7 +279,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
     }
   };
 
-  const cropName = currentCropId ? CROP_CONFIG[currentCropId]?.name : '';
+  const cropName = currentCropId ? t(`crops.${currentCropId}`) : '';
 
   // 辅助渲染: 操作按钮覆盖层
   const renderActions = () => {
@@ -361,11 +352,11 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
               </div>
             )}
 
-            {land.status === 'withered' && (
+            {/* {land.status === 'withered' && (
               <div className="absolute bottom-1 z-30 text-[8px] text-red-400 font-mono bg-black/60 px-2 py-0.5">
-                WITHERED
+                {t('status.dead')}
               </div>
-            )}
+            )} */}
 
             <div className={`w-12 h-12 sm:w-14 sm:h-14 transition-transform duration-500 relative ${isMature ? 'animate-bounce-slow' : 'scale-90 group-hover:scale-100'}`}>
               {renderCropIcon()}
@@ -392,7 +383,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
 
               {isMature && (
                 <div className={`text-black text-[8px] px-2 py-0.5 font-bold font-mono border border-black shadow-sm tracking-wide ${!isOwner ? 'bg-red-500 text-white' : 'bg-yellow-500/90'}`}>
-                  {!isOwner ? 'STEAL' : 'HARVEST'}
+                  {!isOwner ? t('action.STEAL') : t('action.HARVEST')}
                 </div>
               )}
             </div>
@@ -403,6 +394,13 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       {land.status !== 'empty' && (
         <div className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 transition-opacity bg-black/60 px-1 py-0.5 rounded text-[8px] font-mono text-white pointer-events-none z-30">
           {cropName}
+        </div>
+      )}
+
+      {/* Status Label */}
+      {land.status !== 'empty' && (
+        <div className="absolute top-1 right-1 bg-black/40 px-1 py-0.5 rounded text-[8px] font-mono text-white/80 pointer-events-none z-20">
+          {isMature ? t('status.ripe') : land.status === 'withered' ? t('status.dead') : t('status.grow')}
         </div>
       )}
     </div>

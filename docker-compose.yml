@@ -129,6 +129,28 @@ services:
       - farm-network
     restart: unless-stopped
 
+  # 5. [新增] 日志 Worker (BullMQ)
+  # 专门处理游戏日志批量写入
+  worker-logs:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: qq-farm-worker-logs
+    environment:
+      NODE_ENV: production
+      SERVICE_NAME: worker-logs
+      HOSTNAME: worker-logs
+      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - farm-network
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:

@@ -106,7 +106,7 @@ export function FarmViewport({
   const [isUserListSidebarOpen, setIsUserListSidebarOpen] = useState(false);
   const [userListSidebarType, setUserListSidebarType] = useState<'following' | 'followers'>('following');
   const [userListPlayerId, setUserListPlayerId] = useState<string>('');
-  const debugMode = false;
+  const debugMode = true;
 
   const isOwner = !!(selectedPlayer && myPlayer && selectedPlayer.id === myPlayer.id);
 

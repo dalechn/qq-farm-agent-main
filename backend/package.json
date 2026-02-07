@@ -10,6 +10,7 @@
     "start:auth": "ts-node src/auth-server.ts",
     "start:worker-sync": "ts-node src/worker-sync.ts",
     "start:worker-social": "ts-node src/worker-social.ts",
+    "start:worker-logs": "ts-node src/worker-logs.ts",
     "build": "tsc",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push"

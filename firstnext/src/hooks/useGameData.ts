@@ -29,6 +29,8 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const [hasMorePlayers, setHasMorePlayers] = useState(true);
   const [isFetchingMorePlayers, setIsFetchingMorePlayers] = useState(false);
   const [totalPlayersCount, setTotalPlayersCount] = useState(0);
+  // [新增] 玩家列表刷新状态 (非分页加载)
+  const [isRefreshingPlayers, setIsRefreshingPlayers] = useState(false);
 
   // [新增] 排序状态
   const [sortBy, setSortBy] = useState<SortType>('gold');
@@ -60,7 +62,11 @@ export function useGameData(options: UseGameDataOptions = {}) {
   // 获取玩家列表 (包含排序逻辑)
   const fetchPlayers = useCallback(async (pageNum: number, isLoadMore = false) => {
     try {
-      if (isLoadMore) setIsFetchingMorePlayers(true);
+      if (isLoadMore) {
+        setIsFetchingMorePlayers(true);
+      } else {
+        setIsRefreshingPlayers(true);
+      }
 
       // 使用当前的 sortBy
       const response = await publicApi.getLeaderboard(pageNum, 20, sortBy);
@@ -82,6 +88,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
       setError(err.message);
     } finally {
       setIsFetchingMorePlayers(false);
+      setIsRefreshingPlayers(false);
     }
   }, [sortBy]); // 依赖 sortBy
 
@@ -151,6 +158,11 @@ export function useGameData(options: UseGameDataOptions = {}) {
       }
     }
   }, []);
+
+  const refreshPlayers = useCallback(() => {
+    setPlayerPage(1);
+    fetchPlayers(1, false);
+  }, [fetchPlayers]);
 
   const refreshLogs = useCallback(() => {
     setLogPage(1);
@@ -231,6 +243,9 @@ export function useGameData(options: UseGameDataOptions = {}) {
     hasMoreLogs,
     loadMoreLogs,
     refreshLogs,
+
+    refreshPlayers,
+    isRefreshingPlayers,
 
     // 暴露排序控制
     sortBy,

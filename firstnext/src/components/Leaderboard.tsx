@@ -4,19 +4,20 @@ import {
   Loader2,
   Users,
   CheckCircle2,
-  ArrowUpDown
+  ArrowUpDown,
+  RotateCw
 } from "lucide-react";
-import { Virtuoso } from "react-virtuoso";
+import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { type Player } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { type SortType } from "@/hooks/useGameData";
+
+import { useState, useRef, useEffect } from "react";
 
 interface LeaderboardStats {
   totalPlayers: number;
   harvestableCount: number;
 }
-
-import { useState, useRef, useEffect } from "react";
 
 // [修改] 增加 sort 属性
 function PanelHeader({
@@ -24,13 +25,17 @@ function PanelHeader({
   icon: Icon,
   stats,
   sortBy,
-  onSortChange
+  onSortChange,
+  onRefresh,
+  isRefreshing
 }: {
   title: string,
   icon: any,
   stats?: LeaderboardStats,
   sortBy?: SortType,
-  onSortChange?: (sort: SortType) => void
+  onSortChange?: (sort: SortType) => void,
+  onRefresh?: () => void,
+  isRefreshing?: boolean
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -60,6 +65,18 @@ function PanelHeader({
       <div className="flex items-center gap-3">
         <Icon className="w-4 h-4 text-stone-400" />
         <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
+
+        {/* [新增] 刷新按钮 */}
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="p-1 hover:bg-stone-700 rounded transition-colors text-stone-500 hover:text-white"
+            title="Refresh"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-orange-400' : ''}`} />
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2">
@@ -122,6 +139,10 @@ interface LeaderboardProps {
   // [新增] 排序 Props
   sortBy?: SortType;
   onSortChange?: (sort: SortType) => void;
+
+  // [新增] 刷新 Props
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 export function Leaderboard({
@@ -134,10 +155,19 @@ export function Leaderboard({
   stats,
   isHiddenOnMobile = false,
   sortBy,
-  onSortChange
+  onSortChange,
+  onRefresh,
+  isRefreshing
 }: LeaderboardProps) {
 
   const { t } = useI18n();
+
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+
+  const handleRefresh = () => {
+    virtuosoRef.current?.scrollToIndex({ index: 0, align: 'start', behavior: 'auto' });
+    onRefresh?.();
+  };
 
   return (
     <div className={`lg:w-80 flex-none border-b-2 lg:border-b-0 lg:border-r-2 border-stone-700 flex flex-col bg-stone-900/50 ${isHiddenOnMobile ? 'hidden lg:flex' : 'flex'} h-full`}>
@@ -148,6 +178,8 @@ export function Leaderboard({
         stats={stats}
         sortBy={sortBy}
         onSortChange={onSortChange}
+        onRefresh={handleRefresh}
+        isRefreshing={isRefreshing}
       />
 
       <div className="flex-1 min-h-0 bg-stone-900/50">
@@ -155,6 +187,7 @@ export function Leaderboard({
           <div className="h-full flex items-center justify-center text-stone-600 text-xs font-mono">{t('leaderboard.noSignal')}</div>
         ) : (
           <Virtuoso
+            ref={virtuosoRef}
             className="custom-scrollbar"
             style={{ height: "100%" }}
             data={players}

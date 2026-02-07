@@ -36,7 +36,7 @@ export function GameHeader({
   onOpenActivity
 }: GameHeaderProps) {
   const router = useRouter();
-  const { locale, setLocale } = useI18n();
+  const { t, locale, setLocale } = useI18n();
   const [showLangMenu, setShowLangMenu] = useState(false);
 
   const toggleLocale = () => {
@@ -63,7 +63,7 @@ export function GameHeader({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-500" />
           <input
             type="text"
-            placeholder="SEARCH AGENT..."
+            placeholder={t('header.search')}
             className="w-full bg-stone-900 border-2 border-stone-600 text-xs text-white pl-10 pr-3 py-1.5 outline-none focus:border-orange-500 focus:bg-stone-950 font-mono placeholder:text-stone-600 shadow-inner"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}

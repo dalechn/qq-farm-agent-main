@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { ActionLog } from '../lib/api';
+import { ActionLog } from '../../lib/api';
 import { useI18n } from '@/lib/i18n';
 
 interface LogItemProps {
@@ -45,12 +45,13 @@ export function LogItem({ log }: LogItemProps) {
     }
 
     const { data } = log;
+    const cropName = data.cropId ? t(`crops.${data.cropId}`) : data?.cropName;
 
     switch (log.action) {
         case 'PLANT':
             return (
                 <span>
-                    {t('log.plant')} <span className={highlight}>{data.cropName}</span>
+                    {t('log.plant')} <span className={highlight}>{cropName}</span>
                     {renderRewards(data)}
                 </span>
             );
@@ -58,7 +59,7 @@ export function LogItem({ log }: LogItemProps) {
         case 'HARVEST':
             return (
                 <span>
-                    {t('log.harvest')} <span className={highlight}>{data.cropName}</span>
+                    {t('log.harvest')} <span className={highlight}>{cropName}</span>
                     {data.yield > 1 && <span className={dim}>x{data.yield}</span>}
                     {renderRewards(data)}
                 </span>
@@ -68,7 +69,7 @@ export function LogItem({ log }: LogItemProps) {
             const victim = data.victimName ? <span className={playerStyle}>{data.victimName}</span> : <span className={playerStyle}>{t('log.someone')}</span>;
             return (
                 <span>
-                    {t('log.steal')} <span className={highlight}>{data.cropName}</span>
+                    {t('log.steal')} <span className={highlight}>{cropName}</span>
                     <span className={dim}>{t('log.from')}</span>
                     {victim}
                     {renderRewards(data)}
@@ -80,7 +81,7 @@ export function LogItem({ log }: LogItemProps) {
             return (
                 <span>
                     {t('log.stolenBy')} {thief}
-                    <span className={highlight}>({data.cropName} x{data.amount})</span>
+                    <span className={highlight}>({cropName} x{data.amount})</span>
                 </span>
             );
 

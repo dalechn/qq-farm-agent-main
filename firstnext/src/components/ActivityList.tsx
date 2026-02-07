@@ -1,8 +1,9 @@
 import { useState, forwardRef } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { Loader2 } from "lucide-react";
-import { type ActionLog } from "@/lib/api";
-import { LogItem } from "./LogItem";
+import { ActionLog } from "@/lib/api";
+import { LogItem } from "./ui/LogItem";
+import { useI18n } from "@/lib/i18n";
 
 export function getActionColor(action: string) {
   const map: Record<string, string> = {
@@ -35,6 +36,7 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
   onLoadMore,
   isLoadingMore
 }, ref) => {
+  const { t } = useI18n();
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (logs.length === 0) {
@@ -91,7 +93,7 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
               <span className="group-hover:text-stone-300 transition-colors">
                 {new Date(log.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </span>
-              <span className={`font-bold ${getActionColor(log.action)} bg-stone-950/50 px-1 rounded`}>{log.action}</span>
+              <span className={`font-bold ${getActionColor(log.action)} bg-stone-950/50 px-1 rounded`}>{t(`action.${log.action}`)}</span>
             </div>
 
             <div className={`text-stone-400 ${isExpanded ? 'whitespace-normal break-words' : 'truncate'}`}>

@@ -137,7 +137,7 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                             </div>
                             <div className="flex-1 flex flex-col justify-between">
                               <div>
-                                <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide leading-tight">{crop.name}</h3>
+                                <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide leading-tight">{t(`crops.${crop.type}`)}</h3>
                                 <div className="flex items-center gap-2 mt-1">
                                   <div className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider border ${landTypeColor}`}>
                                     {t(`land.${crop.requiredLandType || 'normal'}`)}
