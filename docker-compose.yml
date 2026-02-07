@@ -94,7 +94,8 @@ services:
     container_name: qq-farm-worker-social
     environment:
       NODE_ENV: production
-      SERVICE_NAME: worker-social  # 对应 Dockerfile 中的 elif
+      SERVICE_NAME: worker-social
+      HOSTNAME: worker-social
       DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
       REDIS_URL: redis://redis:6379
     depends_on:
@@ -115,7 +116,8 @@ services:
     container_name: qq-farm-worker-sync
     environment:
       NODE_ENV: production
-      SERVICE_NAME: worker-sync    # 对应 Dockerfile 中的 elif
+      SERVICE_NAME: worker-sync
+      HOSTNAME: worker-sync
       DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
       REDIS_URL: redis://redis:6379
     depends_on:

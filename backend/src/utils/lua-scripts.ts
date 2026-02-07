@@ -26,6 +26,15 @@ const XP_LOGIC = `
     end
 `;
 
+// [新增] 通用同步逻辑：向 Stream 发送事件
+// 参数: streamKey, playerKey, actionName
+const SYNC_LOGIC = `
+    local realPid = string.match(playerKey, "game:player:(.+)")
+    if realPid then
+        redis.call('XADD', streamKey, '*', 'playerId', realPid, 'action', actionName, 'ts', ARGV[3] or '0')
+    end
+`;
+
 export const LUA_SCRIPTS = {
 
   // ==========================================
@@ -34,9 +43,8 @@ export const LUA_SCRIPTS = {
   PLANT: `
     ${XP_TABLE_LUA} 
     local landKey = KEYS[1]
-    local dirtyLands = KEYS[2]
-    local playerKey = KEYS[3]
-    local dirtyPlayers = KEYS[4]
+    local playerKey = KEYS[2]
+    local streamKey = KEYS[3] -- [修改] 接收 Stream Key
     
     local cropId = ARGV[1]
     local matureAt = ARGV[2]
@@ -46,6 +54,8 @@ export const LUA_SCRIPTS = {
     local requiredLandLevel = tonumber(ARGV[6])
     local seedCost = tonumber(ARGV[7])
     local requiredPlayerLevel = tonumber(ARGV[8])
+    
+    local actionName = 'PLANT'
 
     -- 1. 检查土地状态
     local landInfo = redis.call('HMGET', landKey, 'status', 'landType')
@@ -58,8 +68,7 @@ export const LUA_SCRIPTS = {
 
     -- 2. 检查土地等级
     local currentLandLevel = 0
-    if landType == 'normal' then currentLandLevel = 0
-    elseif landType == 'red' then currentLandLevel = 1
+    if landType == 'red' then currentLandLevel = 1
     elseif landType == 'black' then currentLandLevel = 2
     elseif landType == 'gold' then currentLandLevel = 3
     end
@@ -83,19 +92,12 @@ export const LUA_SCRIPTS = {
 
     -- 5. 执行种植
     redis.call('HMSET', landKey, 
-      'status', 'planted',
-      'cropId', cropId,
-      'plantedAt', now,
-      'matureAt', matureAt,
-      'remainingHarvests', maxHarvests,
-      'hasWeeds', 'false',
-      'hasPests', 'false',
-      'needsWater', 'false',
-      'stolenCount', 0
+      'status', 'planted', 'cropId', cropId, 'plantedAt', now, 'matureAt', matureAt,
+      'remainingHarvests', maxHarvests, 'hasWeeds', 'false', 'hasPests', 'false', 'needsWater', 'false', 'stolenCount', 0
     )
 
-    redis.call('SADD', dirtyLands, landKey)
-    redis.call('SADD', dirtyPlayers, playerKey)
+    -- [核心修改] 发送事件到 Stream
+    ${SYNC_LOGIC}
 
     -- 6. 经验与升级逻辑
     ${XP_LOGIC}
@@ -110,15 +112,16 @@ export const LUA_SCRIPTS = {
     ${XP_TABLE_LUA}
     local landKey = KEYS[1]
     local playerKey = KEYS[2]
-    local dirtyLands = KEYS[3]
-    local dirtyPlayers = KEYS[4]
+    local streamKey = KEYS[3]
     
     local baseGold = tonumber(ARGV[1])
-    local baseExp = tonumber(ARGV[2]) -- [修复] 修正注释符号
-    local now = tonumber(ARGV[3])
+    local baseExp = tonumber(ARGV[2])
+    local now = ARGV[3]
     local stealPenaltyRate = tonumber(ARGV[4])
     local healthPenaltyRate = tonumber(ARGV[5])
     local regrowTime = tonumber(ARGV[6]) * 1000
+    
+    local actionName = 'HARVEST'
 
     local landInfo = redis.call('HMGET', landKey, 'status', 'matureAt', 'stolenCount', 'hasWeeds', 'hasPests', 'remainingHarvests', 'needsWater')
     local status = landInfo[1]
@@ -132,7 +135,7 @@ export const LUA_SCRIPTS = {
     -- 检查是否可收获
     local isReady = false
     if status == 'harvestable' then isReady = true end
-    if status == 'planted' and now >= matureAt then isReady = true end
+    if status == 'planted' and tonumber(now) >= matureAt then isReady = true end
 
     if not isReady then return {err = 'Crop not mature yet'} end
 
@@ -144,9 +147,7 @@ export const LUA_SCRIPTS = {
     if needsWater then finalRate = finalRate - healthPenaltyRate end
     if finalRate < 0.1 then finalRate = 0.1 end
 
-    -- 修复浮点数精度: 使用四舍五入而不是直接floor
     local finalGold = math.floor(baseGold * finalRate + 0.5)
-    -- 经验不受惩罚影响
     local finalExp = baseExp 
 
     redis.call('HINCRBYFLOAT', playerKey, 'gold', finalGold)
@@ -159,33 +160,15 @@ export const LUA_SCRIPTS = {
     local nextRemaining = remaining - 1
     
     if nextRemaining > 0 then
-      local nextMatureAt = now + regrowTime
-      redis.call('HMSET', landKey, 
-        'status', 'planted',
-        'matureAt', nextMatureAt,
-        'plantedAt', now,
-        'remainingHarvests', nextRemaining,
-        'stolenCount', 0,             
-        'hasWeeds', 'false',          
-        'hasPests', 'false',
-        'needsWater', 'false'
-      )
+      local nextMatureAt = tonumber(now) + regrowTime
+      redis.call('HMSET', landKey, 'status', 'planted', 'matureAt', nextMatureAt, 'plantedAt', now, 'remainingHarvests', nextRemaining, 'stolenCount', 0, 'hasWeeds', 'false', 'hasPests', 'false', 'needsWater', 'false')
     else
-      redis.call('HMSET', landKey, 
-        'status', 'withered', 
-        'matureAt', '0', 
-        'plantedAt', '0',
-        'remainingHarvests', 0,
-        'stolenCount', 0,
-        'hasWeeds', 'false',
-        'hasPests', 'false',
-        'needsWater', 'false'
-      )
+      redis.call('HMSET', landKey, 'status', 'withered', 'matureAt', '0', 'plantedAt', '0', 'remainingHarvests', 0, 'stolenCount', 0, 'hasWeeds', 'false', 'hasPests', 'false', 'needsWater', 'false')
     end
     
     redis.call('DEL', landKey .. ':thieves')
-    redis.call('SADD', dirtyLands, landKey)
-    redis.call('SADD', dirtyPlayers, playerKey)
+    
+    ${SYNC_LOGIC}
 
     return {finalGold, finalExp, tostring(finalRate), nextRemaining, tostring(isLevelUp), tostring(hasWeeds), tostring(hasPests), tostring(needsWater)}
   `,
@@ -197,36 +180,37 @@ export const LUA_SCRIPTS = {
     local landKey = KEYS[1]
     local stealerKey = KEYS[2]
     local thievesKey = KEYS[3]
-    local dirtyLands = KEYS[4]
-    local dirtyPlayers = KEYS[5]
-    local victimKey = KEYS[6]
-    local dailyStealKey = KEYS[7]
+    local streamKey = KEYS[4] -- [修改] 
+    local victimKey = KEYS[5]
+    local dailyStealKey = KEYS[6]
 
     local stealerId = ARGV[1]
     local goldGain = tonumber(ARGV[2])
-    local now = tonumber(ARGV[3])
+    local now = ARGV[3]
     local maxStolen = tonumber(ARGV[4])
     local dogCatchRate = tonumber(ARGV[5])
     local dogPenalty = tonumber(ARGV[6])
     local maxDailySteal = tonumber(ARGV[7])
 
-    -- 1. 检查每日偷取上限
+    local actionName = 'STEAL'
+    local playerKey = stealerKey -- 用于 SYNC_LOGIC
+
+    -- 检查每日上限
     local currentDailySteal = tonumber(redis.call('GET', dailyStealKey) or '0')
     if currentDailySteal + goldGain > maxDailySteal then
        return {err = 'Daily steal limit reached', current = currentDailySteal, limit = maxDailySteal}
     end
 
-    -- 2. 🐶 检查狗
+    -- 狗
     local dogTime = tonumber(redis.call('HGET', victimKey, 'dogActiveUntil') or '0')
-    if now < dogTime then
+    if tonumber(now) < dogTime then
        if math.random(1, 100) <= dogCatchRate then
           redis.call('HINCRBYFLOAT', stealerKey, 'gold', -dogPenalty)
-          redis.call('SADD', dirtyPlayers, stealerKey)
+          ${SYNC_LOGIC}
           return {err = 'Bitten by dog', penalty = dogPenalty}
        end
     end
 
-    -- 3. 检查土地
     local landInfo = redis.call('HMGET', landKey, 'status', 'matureAt', 'stolenCount')
     local status = landInfo[1]
     local matureAt = tonumber(landInfo[2] or '0')
@@ -234,27 +218,30 @@ export const LUA_SCRIPTS = {
 
     local canSteal = false
     if status == 'harvestable' then canSteal = true end
-    if status == 'planted' and now >= matureAt then canSteal = true end
-
+    if status == 'planted' and tonumber(now) >= matureAt then canSteal = true end
     if not canSteal then return {err = 'Not harvestable'} end
     if stolenCount >= maxStolen then return {err = 'Already fully stolen'} end
-
     if redis.call('SISMEMBER', thievesKey, stealerId) == 1 then return {err = 'Already stolen by you'} end
 
-    -- 4. 执行偷窃
     redis.call('HINCRBY', landKey, 'stolenCount', 1)
     redis.call('SADD', thievesKey, stealerId)
     redis.call('EXPIRE', thievesKey, 172800) 
-
     redis.call('HINCRBYFLOAT', stealerKey, 'gold', goldGain)
-
-    -- 5. 更新每日偷取计数
     redis.call('INCRBY', dailyStealKey, goldGain)
     redis.call('EXPIRE', dailyStealKey, 172800)
 
-    redis.call('SADD', dirtyLands, landKey)
-    redis.call('SADD', dirtyPlayers, stealerKey)
-
+    -- 这里需要同步两个玩家：偷窃者(金币) 和 受害者(土地被标记)
+    -- 1. 同步偷窃者
+    ${SYNC_LOGIC}
+    
+    -- 2. 同步受害者 (土地被标记stolen，虽然只影响收益计算，但也算状态变更)
+    local victimAction = 'STOLEN'
+    local victimRealId = string.match(victimKey, "game:player:(.+)")
+    if victimRealId then
+        redis.call('XADD', streamKey, '*', 'playerId', victimRealId, 'action', victimAction, 'ts', now)
+    end
+    
+    -- 土地脏数据由 victim 的同步逻辑处理
     return {stolenCount + 1}
   `,
 
@@ -265,13 +252,14 @@ export const LUA_SCRIPTS = {
     ${XP_TABLE_LUA}
     local landKey = KEYS[1]
     local playerKey = KEYS[2]
-    local dirtyLands = KEYS[3]
-    local dirtyPlayers = KEYS[4]
-    local dailyExpKey = KEYS[5]
+    local streamKey = KEYS[3]
+    local dailyExpKey = KEYS[4]
     
     local typeField = ARGV[1]
-    local gainVal = tonumber(ARGV[2]) -- [修复] 修正注释符号
+    local gainVal = tonumber(ARGV[2])
     local maxDailyExp = tonumber(ARGV[3])
+    
+    local actionName = 'CARE'
 
     local needCare = redis.call('HGET', landKey, typeField)
     if needCare ~= 'true' then return {err = 'No need to care'} end
@@ -284,16 +272,20 @@ export const LUA_SCRIPTS = {
       actualExpGain = gainVal
       redis.call('INCRBY', dailyExpKey, actualExpGain)
       redis.call('EXPIRE', dailyExpKey, 172800) 
-      
-      -- 经验与升级逻辑
       local expGain = actualExpGain
       ${XP_LOGIC}
-      
-      redis.call('SADD', dirtyPlayers, playerKey)
+      ${SYNC_LOGIC}
     end
 
     redis.call('HSET', landKey, typeField, 'false')
-    redis.call('SADD', dirtyLands, landKey)
+    
+    -- 同步土地拥有者 (如果 owner 不是操作者)
+    local playerIdFromLand = string.match(landKey, "game:land:(.+):%d+")
+    local operatorId = string.match(playerKey, "game:player:(.+)")
+    
+    if playerIdFromLand and playerIdFromLand ~= operatorId then
+       redis.call('XADD', streamKey, '*', 'playerId', playerIdFromLand, 'action', 'HELPED', 'ts', ARGV[4] or '0')
+    end
 
     return {actualExpGain, tostring(isLevelUp)}
   `,
@@ -304,47 +296,34 @@ export const LUA_SCRIPTS = {
   SHOVEL: `
     ${XP_TABLE_LUA}
     local landKey = KEYS[1]
-    local dirtyLands = KEYS[2]
-    local playerKey = KEYS[3]
-    local dirtyPlayers = KEYS[4]
+    local playerKey = KEYS[2]
+    local streamKey = KEYS[3]
     local expGain = tonumber(ARGV[1])
     local isOwner = ARGV[2] == 'true'
+    
+    local actionName = 'SHOVEL'
 
     local status = redis.call('HGET', landKey, 'status')
     if status == 'empty' then return {err = 'Land is already empty'} end
+    if not isOwner and status ~= 'withered' then return {err = 'Cannot shovel others planted crops'} end
 
-    if not isOwner and status ~= 'withered' then
-      return {err = 'Cannot shovel others planted crops'}
-    end
-
-    redis.call('HMSET', landKey, 
-      'status', 'empty',
-      'cropId', '',
-      'matureAt', '0',
-      'plantedAt', '0',
-      'remainingHarvests', 0,
-      'stolenCount', 0,
-      'hasWeeds', 'false',
-      'hasPests', 'false',
-      'needsWater', 'false'
-    )
+    redis.call('HMSET', landKey, 'status', 'empty', 'cropId', '', 'matureAt', '0', 'plantedAt', '0', 'remainingHarvests', 0, 'stolenCount', 0, 'hasWeeds', 'false', 'hasPests', 'false', 'needsWater', 'false')
     
-    -- 经验与升级逻辑
     ${XP_LOGIC}
-
     redis.call('DEL', landKey .. ':thieves')
-    redis.call('SADD', dirtyLands, landKey)
-    redis.call('SADD', dirtyPlayers, playerKey)
+    ${SYNC_LOGIC}
     return {'OK', tostring(isLevelUp)}
   `,
 
-  // ... (FERTILIZE, UPGRADE_LAND, EXPAND_LAND, BUY_OR_FEED_DOG, TRIGGER_EVENTS 保持不变)
   FERTILIZE: `
     local landKey = KEYS[1]
     local playerKey = KEYS[2]
+    local streamKey = KEYS[3]
     local price = tonumber(ARGV[1])
     local reduceTime = tonumber(ARGV[2]) * 1000
     local now = tonumber(ARGV[3])
+    
+    local actionName = 'FERTILIZE'
 
     local gold = tonumber(redis.call('HGET', playerKey, 'gold') or '0')
     if gold < price then return {err = 'Not enough gold'} end
@@ -357,13 +336,11 @@ export const LUA_SCRIPTS = {
     if matureAt <= now then return {err = 'Already mature'} end
 
     redis.call('HINCRBYFLOAT', playerKey, 'gold', -price)
-    
     local newMatureAt = matureAt - reduceTime
     if newMatureAt < now then newMatureAt = now end
 
     redis.call('HSET', landKey, 'matureAt', newMatureAt)
-    redis.call('SADD', KEYS[3], landKey)
-    redis.call('SADD', KEYS[4], playerKey)
+    ${SYNC_LOGIC}
 
     return {newMatureAt}
   `,
@@ -371,9 +348,12 @@ export const LUA_SCRIPTS = {
   UPGRADE_LAND: `
     local landKey = KEYS[1]
     local playerKey = KEYS[2]
+    local streamKey = KEYS[3]
     local cost = tonumber(ARGV[1])
     local targetType = ARGV[2]
     local levelReq = tonumber(ARGV[3])
+    
+    local actionName = 'UPGRADE'
 
     local playerInfo = redis.call('HMGET', playerKey, 'gold', 'level')
     local gold = tonumber(playerInfo[1] or '0')
@@ -384,66 +364,45 @@ export const LUA_SCRIPTS = {
 
     redis.call('HINCRBYFLOAT', playerKey, 'gold', -cost)
     redis.call('HSET', landKey, 'landType', targetType)
-    redis.call('SADD', KEYS[3], landKey)
-    redis.call('SADD', KEYS[4], playerKey)
+    ${SYNC_LOGIC}
     return 'OK'
   `,
 
   EXPAND_LAND: `
     local playerKey = KEYS[1]
-    local dirtyPlayersKey = KEYS[2]
-    local dirtyLandsKey = KEYS[3]
-    
+    local streamKey = KEYS[2]
     local cost = tonumber(ARGV[1])
     local maxLimit = tonumber(ARGV[2])
     local playerId = ARGV[3]
-    local defaultCount = 6
     
-    -- 1. 检查金币
+    local actionName = 'EXPAND'
+
     local gold = tonumber(redis.call('HGET', playerKey, 'gold') or 0)
-    if gold < cost then
-        return { err = 'Not enough gold' }
-    end
+    if gold < cost then return { err = 'Not enough gold' } end
     
-    -- 2. 原子获取并增加土地数量
-    local currentCount = tonumber(redis.call('HGET', playerKey, 'landCount') or defaultCount)
-    
-    if currentCount >= maxLimit then
-        return { err = 'Max land limit reached' }
-    end
+    local currentCount = tonumber(redis.call('HGET', playerKey, 'landCount') or 6)
+    if currentCount >= maxLimit then return { err = 'Max land limit reached' } end
     
     local newPos = currentCount 
-    
-    -- 3. 扣费并更新数量
     redis.call('HINCRBYFLOAT', playerKey, 'gold', -cost)
     redis.call('HSET', playerKey, 'landCount', currentCount + 1)
     
-    -- 4. 初始化新土地
     local newLandKey = 'game:land:' .. playerId .. ':' .. newPos
+    redis.call('HMSET', newLandKey, 'id', '0', 'position', newPos, 'status', 'empty', 'landType', 'normal', 'remainingHarvests', 0, 'stolenCount', 0)
     
-    redis.call('HMSET', newLandKey, 
-      'id', '0', 
-      'position', newPos,
-      'status', 'empty',
-      'landType', 'normal',
-      'remainingHarvests', 0,
-      'stolenCount', 0
-    )
-    
-    -- 5. 标记脏数据
-    redis.call('SADD', dirtyPlayersKey, playerId)
-    redis.call('SADD', dirtyLandsKey, playerId .. ':' .. newPos) 
-    
+    ${SYNC_LOGIC}
     return { newPos, currentCount + 1 }
   `,
 
   BUY_OR_FEED_DOG: `
     local playerKey = KEYS[1]
-    local dirtyPlayers = KEYS[2]
+    local streamKey = KEYS[2]
     local price = tonumber(ARGV[1])
     local duration = tonumber(ARGV[2]) * 1000
     local now = tonumber(ARGV[3])
     local isFeed = ARGV[4] == 'true'
+    
+    local actionName = 'DOG'
 
     if isFeed then
        local hasDog = redis.call('HGET', playerKey, 'hasDog')
@@ -454,26 +413,18 @@ export const LUA_SCRIPTS = {
     if gold < price then return {err = 'Not enough gold'} end
 
     redis.call('HINCRBYFLOAT', playerKey, 'gold', -price)
-
     local currentExpire = tonumber(redis.call('HGET', playerKey, 'dogActiveUntil') or '0')
     local newExpire = 0
-    
-    if isFeed and currentExpire > now then
-       newExpire = currentExpire + duration
-    else
-       newExpire = now + duration
-    end
+    if isFeed and currentExpire > now then newExpire = currentExpire + duration else newExpire = now + duration end
 
     redis.call('HMSET', playerKey, 'hasDog', 'true', 'dogActiveUntil', newExpire)
-    redis.call('SADD', dirtyPlayers, playerKey)
-    
+    ${SYNC_LOGIC}
     return {newExpire}
   `,
 
   TRIGGER_EVENTS: `
     local playerKey = KEYS[1]
-    local dirtyLands = KEYS[2]
-    local dirtyPlayers = KEYS[3] -- [新增] 接收 dirtyPlayers key
+    local streamKey = KEYS[2] -- [修改] 
     
     local maxLands = tonumber(ARGV[1])
     local probWeed = tonumber(ARGV[2])
@@ -481,69 +432,54 @@ export const LUA_SCRIPTS = {
     local probWater = tonumber(ARGV[4])
     local now = tonumber(ARGV[5])
     local interval = tonumber(ARGV[6])
+    
+    local actionName = 'DISASTER'
 
-    -- 1. 检查冷却
     local lastCheck = tonumber(redis.call('HGET', playerKey, 'lastDisasterCheck') or '0')
-    if (now - lastCheck) < checkInterval then
-      return 0 
-    end
-
+    if (now - lastCheck) < interval then return {} end
     redis.call('HSET', playerKey, 'lastDisasterCheck', now)
 
-    local triggeredCount = 0
+    local affected = {}
+    local playerId = string.match(playerKey, "game:player:(.+)")
     local anyChange = false
-    local playerId = string.match(playerKey, "player:(.+)")
 
     for i = 0, (maxLands - 1) do
-        local landKey = 'game:land:' .. playerId .. ':' .. i
-        
-        local status = redis.call('HGET', landKey, 'status')
-        if status == 'planted' then
-            local changed = false
-            
-            local hasWeeds = redis.call('HGET', landKey, 'hasWeeds')
-            local hasPests = redis.call('HGET', landKey, 'hasPests')
-            local needsWater = redis.call('HGET', landKey, 'needsWater')
-            
-            local plantedAt = tonumber(redis.call('HGET', landKey, 'plantedAt') or '0')
-            local matureAt = tonumber(redis.call('HGET', landKey, 'matureAt') or '0')
-            
-            local totalTime = matureAt - plantedAt
-            local passedTime = now - plantedAt
+      local landKey = "game:land:" .. playerId .. ":" .. i
+      local info = redis.call('HMGET', landKey, 'status', 'matureAt', 'plantedAt')
+      local status = info[1]
+      local matureAt = tonumber(info[2] or '0')
+      local plantedAt = tonumber(info[3] or '0')
+
+      if status == 'planted' then
+        local changed = false
+        if now >= matureAt then
+            redis.call('HSET', landKey, 'status', 'harvestable')
+            changed = true
+        else
+            local totalDuration = matureAt - plantedAt
+            local passed = now - plantedAt
             local isProtected = false
-            if totalTime > 0 and (passedTime / totalTime) < 0.2 then
-                isProtected = true
-            end
+            if totalDuration > 0 and (passed / totalDuration) < 0.2 then isProtected = true end
 
             if not isProtected then
-                if hasWeeds ~= 'true' and probWeed > 0 and math.random(1, 100) <= probWeed then
-                   redis.call('HSET', landKey, 'hasWeeds', 'true')
-                   changed = true
-                end
-                
-                if hasPests ~= 'true' and probPest > 0 and math.random(1, 100) <= probPest then
-                   redis.call('HSET', landKey, 'hasPests', 'true')
-                   changed = true
-                end
-                
-                if needsWater ~= 'true' and probWater > 0 and math.random(1, 100) <= probWater then
-                   redis.call('HSET', landKey, 'needsWater', 'true')
-                   changed = true
-                end
-            end
-
-            if changed then
-                redis.call('SADD', dirtyLands, landKey)
-                triggeredCount = triggeredCount + 1
-                anyChange = true
+                local currentStates = redis.call('HMGET', landKey, 'hasWeeds', 'hasPests', 'needsWater')
+                if currentStates[1] ~= 'true' and probWeed > 0 and math.random(1, 100) <= probWeed then redis.call('HSET', landKey, 'hasWeeds', 'true'); changed = true end
+                if currentStates[2] ~= 'true' and probPest > 0 and math.random(1, 100) <= probPest then redis.call('HSET', landKey, 'hasPests', 'true'); changed = true end
+                if currentStates[3] ~= 'true' and probWater > 0 and math.random(1, 100) <= probWater then redis.call('HSET', landKey, 'needsWater', 'true'); changed = true end
             end
         end
+
+        if changed then
+          table.insert(affected, i)
+          anyChange = true
+        end
+      end
     end
 
     if anyChange then
-        redis.call('SADD', dirtyPlayers, playerKey)
+        ${SYNC_LOGIC}
     end
 
-    return triggeredCount
-  `,
+    return affected
+  `
 };

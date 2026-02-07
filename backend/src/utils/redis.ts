@@ -29,8 +29,6 @@ export const connectRedis = async () => {
 export { redisClient, redisSubscriber };
 export default redisClient;
 
-
-
 // ==================== [修改] 排行榜 (ZSET) ====================
 
 // 支持 gold (金币榜), level (等级榜), active (活跃榜)
@@ -64,12 +62,19 @@ export const KEYS = {
   // Hash: 土地数据 game:land:{playerId}:{position}
   LAND: (pid: string, pos: number) => `game:land:${pid}:${pos}`,
 
+  // [新增] Redis Stream Key
+  MQ_GAME_EVENTS: 'mq:game:events',
+
+  // [新增] Consumer Group 名称
+  GROUP_NAME_SYNC: 'group:sync',
+  CONSUMER_NAME: `consumer:${process.env.HOSTNAME || 'worker-1'}`,
+
   // Set: 某块地的偷窃者记录 game:land:{pid}:{pos}:thieves
   LAND_THIEVES: (pid: string, pos: number) => `game:land:${pid}:${pos}:thieves`,
 
-  // Set: 脏数据集合 (Worker 监控这些 Key 进行写库)
-  DIRTY_PLAYERS: 'dirty:players',
-  DIRTY_LANDS: 'dirty:lands',
+  // // Set: 脏数据集合 (Worker 监控这些 Key 进行写库)
+  // DIRTY_PLAYERS: 'dirty:players',
+  // DIRTY_LANDS: 'dirty:lands',
 
   // Daily tracking keys
   DAILY_STEAL: (playerId: string, date?: string) => {

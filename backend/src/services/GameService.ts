@@ -176,7 +176,7 @@ export class GameService {
       const landCount = await redisClient.hGet(KEYS.PLAYER(playerId), 'landCount') || '6';
 
       await redisClient.eval(LUA_SCRIPTS.TRIGGER_EVENTS, {
-        keys: [KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS], // 传入 DIRTY_PLAYERS
+        keys: [KEYS.PLAYER(playerId), KEYS.MQ_GAME_EVENTS],
         arguments: [
           landCount,
           PROB_WEED.toString(),
@@ -211,7 +211,7 @@ export class GameService {
     const requiredPlayerLevel = (crop as any).requiredLevel || 1;
 
     const res = await redisClient.eval(LUA_SCRIPTS.PLANT, {
-      keys: [landKey, KEYS.DIRTY_LANDS, KEYS.PLAYER(playerId), KEYS.DIRTY_PLAYERS],
+      keys: [landKey, KEYS.PLAYER(playerId), KEYS.MQ_GAME_EVENTS],
       arguments: [
         crop.type,
         matureAt.toString(),
@@ -277,7 +277,7 @@ export class GameService {
     const { STEAL_PENALTY, HEALTH_PENALTY } = GAME_CONFIG.BASE_RATES;
 
     const res = await redisClient.eval(LUA_SCRIPTS.HARVEST, {
-      keys: [landKey, KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS],
+      keys: [landKey, KEYS.PLAYER(playerId), KEYS.MQ_GAME_EVENTS],
       arguments: [
         baseGold.toString(),
         baseExp.toString(),
@@ -350,8 +350,7 @@ export class GameService {
           victimLandKey,
           KEYS.PLAYER(stealerId),
           KEYS.LAND_THIEVES(victimId, position),
-          KEYS.DIRTY_LANDS,
-          KEYS.DIRTY_PLAYERS,
+          KEYS.MQ_GAME_EVENTS,
           KEYS.PLAYER(victimId),
           KEYS.DAILY_STEAL(stealerId)
         ],
@@ -480,7 +479,7 @@ export class GameService {
     const field = fieldMap[type];
     const xpGain = GAME_CONFIG.EXP_RATES.CARE;
     const res = await redisClient.eval(LUA_SCRIPTS.CARE, {
-      keys: [landKey, KEYS.PLAYER(operatorId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS, KEYS.DAILY_EXP(operatorId)],
+      keys: [landKey, KEYS.PLAYER(operatorId), KEYS.MQ_GAME_EVENTS, KEYS.DAILY_EXP(operatorId)],
       arguments: [field, xpGain.toString(), GAME_CONFIG.MAX_DAILY_CARE_EXP.toString()]
     });
     this.checkLuaError(res);
@@ -542,7 +541,7 @@ export class GameService {
     const expGain = GAME_CONFIG.EXP_RATES.SHOVEL;
 
     const res = await redisClient.eval(LUA_SCRIPTS.SHOVEL, {
-      keys: [KEYS.LAND(ownerId, position), KEYS.DIRTY_LANDS, KEYS.PLAYER(operatorId), KEYS.DIRTY_PLAYERS],
+      keys: [KEYS.LAND(ownerId, position), KEYS.PLAYER(operatorId), KEYS.MQ_GAME_EVENTS],
       arguments: [expGain.toString(), (operatorId === ownerId).toString()]
     });
     this.checkLuaError(res);
@@ -595,7 +594,7 @@ export class GameService {
     const currentType = await redisClient.hGet(landKey, 'landType') || 'normal';
     const upgradeConfig = GAME_CONFIG.LAND_UPGRADE[currentType as keyof typeof GAME_CONFIG.LAND_UPGRADE];
     if (!upgradeConfig || !upgradeConfig.next) throw new Error('Max level reached');
-    const res = await redisClient.eval(LUA_SCRIPTS.UPGRADE_LAND, { keys: [landKey, KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS], arguments: [upgradeConfig.price.toString(), upgradeConfig.next, upgradeConfig.levelReq.toString()] });
+    const res = await redisClient.eval(LUA_SCRIPTS.UPGRADE_LAND, { keys: [landKey, KEYS.PLAYER(playerId), KEYS.MQ_GAME_EVENTS], arguments: [upgradeConfig.price.toString(), upgradeConfig.next, upgradeConfig.levelReq.toString()] });
     this.checkLuaError(res);
 
     await this.syncPlayerRank(playerId); // 消耗金币
@@ -625,8 +624,7 @@ export class GameService {
     const res = await redisClient.eval(LUA_SCRIPTS.EXPAND_LAND, {
       keys: [
         KEYS.PLAYER(playerId),
-        KEYS.DIRTY_PLAYERS,
-        KEYS.DIRTY_LANDS
+        KEYS.MQ_GAME_EVENTS
       ],
       arguments: [
         cost.toString(),
@@ -660,7 +658,7 @@ export class GameService {
   static async useFertilizer(playerId: string, position: number, type: 'normal' | 'high') {
     await this.ensurePlayerLoaded(playerId);
     const config = GAME_CONFIG.FERTILIZER[type];
-    const res = await redisClient.eval(LUA_SCRIPTS.FERTILIZE, { keys: [KEYS.LAND(playerId, position), KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS], arguments: [config.price.toString(), config.reduceSeconds.toString(), Date.now().toString()] });
+    const res = await redisClient.eval(LUA_SCRIPTS.FERTILIZE, { keys: [KEYS.LAND(playerId, position), KEYS.PLAYER(playerId), KEYS.MQ_GAME_EVENTS], arguments: [config.price.toString(), config.reduceSeconds.toString(), Date.now().toString()] });
     this.checkLuaError(res);
 
     await this.syncPlayerRank(playerId); // 消耗金币
@@ -685,7 +683,7 @@ export class GameService {
     await this.ensurePlayerLoaded(playerId);
     const { PRICE, FOOD_PRICE, FOOD_DURATION } = GAME_CONFIG.DOG;
     const price = isFeed ? FOOD_PRICE : PRICE;
-    const res = await redisClient.eval(LUA_SCRIPTS.BUY_OR_FEED_DOG, { keys: [KEYS.PLAYER(playerId), KEYS.DIRTY_PLAYERS], arguments: [price.toString(), FOOD_DURATION.toString(), Date.now().toString(), isFeed ? 'true' : 'false'] });
+    const res = await redisClient.eval(LUA_SCRIPTS.BUY_OR_FEED_DOG, { keys: [KEYS.PLAYER(playerId), KEYS.MQ_GAME_EVENTS], arguments: [price.toString(), FOOD_DURATION.toString(), Date.now().toString(), isFeed ? 'true' : 'false'] });
     this.checkLuaError(res);
 
     await this.syncPlayerRank(playerId); // 消耗金币

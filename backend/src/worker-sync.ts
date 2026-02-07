@@ -7,15 +7,21 @@ import { LandData, LandStatus } from './utils/game-keys';
 
 dotenv.config();
 
-console.log('💾 Sync Worker initializing (JSONB Mode)...');
+console.log('💾 Sync Worker initializing (Stream Mode)...');
 
 let isShuttingDown = false;
+const BATCH_SIZE = 50;
+
+// Create a dedicated client for blocking operations
+const blockingClient = redisClient.duplicate();
+
+blockingClient.on('error', (err) => console.error('Blocking Client Error', err));
 
 // 辅助函数：Redis Hash -> JSON Object
 function mapRedisLandToJson(data: any): LandData {
   return {
     position: Number(data.position),
-    id: data.position.toString(), // 前端可能需要 id
+    id: data.position.toString(),
     status: data.status || LandStatus.EMPTY,
     landType: data.landType || 'normal',
     cropType: data.cropId || undefined,
@@ -29,105 +35,134 @@ function mapRedisLandToJson(data: any): LandData {
   };
 }
 
-async function syncDirtyPlayers() {
-  const BATCH_SIZE = 50;
-  let hasMoreWork = false;
-
+async function initStream() {
   try {
-    // 1. 获取脏玩家列表 (Redis Key)
-    // Fix: sPop might only accept 1 arg in some types. We'll use a loop to pop batch.
-    const dirtyPlayerKeys: string[] = [];
-    for (let i = 0; i < BATCH_SIZE; i++) {
-      const id = await redisClient.sPop(KEYS.DIRTY_PLAYERS);
-      if (!id) break;
-      if (Array.isArray(id)) dirtyPlayerKeys.push(...id);
-      else dirtyPlayerKeys.push(id);
+    await redisClient.xGroupCreate(KEYS.MQ_GAME_EVENTS, KEYS.GROUP_NAME_SYNC, '0', { MKSTREAM: true });
+    console.log('✅ Consumer Group created');
+  } catch (e: any) {
+    if (e.message.includes('BUSYGROUP')) {
+      console.log('ℹ️ Consumer Group already exists');
+    } else {
+      console.error('❌ Failed to create Consumer Group:', e);
+      process.exit(1);
+    }
+  }
+}
+
+async function processStreamMessages() {
+  try {
+    // 1. 读取消息 (Use blockingClient)
+    const response = await blockingClient.xReadGroup(
+      KEYS.GROUP_NAME_SYNC,
+      KEYS.CONSUMER_NAME,
+      { key: KEYS.MQ_GAME_EVENTS, id: '>' },
+      { COUNT: BATCH_SIZE, BLOCK: 2000 }
+    );
+
+    if (!response || response.length === 0) return;
+
+    const streamEntry = response[0]; // { name: 'mq:game:events', messages: [...] }
+    const messages = streamEntry.messages;
+
+    if (messages.length === 0) return;
+
+    console.log(`[Sync] Received ${messages.length} events`);
+
+    // 2. 提取唯一的 playerId
+    const playerIdsToSync = new Set<string>();
+    const messageIdsToAck: string[] = [];
+
+    for (const msg of messages) {
+      const msgBody = msg.message; // { playerId: '...', action: '...', ts: '...' }
+      if (msgBody.playerId) {
+        playerIdsToSync.add(msgBody.playerId);
+      }
+      messageIdsToAck.push(msg.id);
     }
 
-    if (dirtyPlayerKeys && dirtyPlayerKeys.length > 0) {
-      if (dirtyPlayerKeys.length === BATCH_SIZE) hasMoreWork = true;
-      console.log(`[Sync] Updating ${dirtyPlayerKeys.length} players...`);
+    if (playerIdsToSync.size > 0) {
+      console.log(`[Sync] Syncing ${playerIdsToSync.size} unique players...`);
 
-      const operations = dirtyPlayerKeys.map(async (playerKey) => {
-        // 解析 ID: "game:player:uuid" -> "uuid"
-        const parts = playerKey.split(':');
-        const realPlayerId = parts[parts.length - 1];
-        if (!realPlayerId) return;
+      // 3. 并行处理玩家同步
+      // 注意：这里我们只处理去重后的 playerId，减少 DB 写次数
+      const operations = Array.from(playerIdsToSync).map(async (playerId) => {
+        try {
+          const playerKey = KEYS.PLAYER(playerId);
 
-        // 2. 获取玩家基础数据
-        const playerRaw = await redisClient.hGetAll(playerKey);
-        if (!playerRaw || Object.keys(playerRaw).length === 0) return;
-        const playerData = parseRedisHash<any>(playerRaw);
+          // A. 获取玩家基础数据
+          const playerRaw = await redisClient.hGetAll(playerKey);
+          if (!playerRaw || Object.keys(playerRaw).length === 0) return;
+          const playerData = parseRedisHash<any>(playerRaw);
 
-        // 3. 获取该玩家的所有土地数据
-        // 从 Redis 读取 landCount，如果没读到默认 6
-        const landCount = Number(playerData.landCount || 6);
+          // B. 获取该玩家的所有土地数据
+          const landCount = Number(playerData.landCount || 6);
 
-        // 使用 Pipeline 批量读取所有土地 Key
-        const pipeline = redisClient.multi();
-        for (let i = 0; i < landCount; i++) {
-          pipeline.hGetAll(KEYS.LAND(realPlayerId, i));
-        }
-        const landsRaw = await pipeline.exec();
+          const pipeline = redisClient.multi();
+          for (let i = 0; i < landCount; i++) {
+            pipeline.hGetAll(KEYS.LAND(playerId, i));
+          }
+          const landsRaw = await pipeline.exec();
 
-        // 4. 组装 JSON 数组
-        const landsJson: LandData[] = [];
-        if (landsRaw) {
-          landsRaw.forEach((res) => {
-            // ioredis pipeline results may handle errors differently, but usually it's the result object directly in node-redis v4+ exec()
-            // If using ioredis, it might be [err, result]. Assuming node-redis v4 based on keys.ts usage.
-            // Cast to any to handle potential type mismatch if library types are strict
-            const landObj = res as unknown as Record<string, string>;
-            if (landObj && Object.keys(landObj).length > 0) {
-              landsJson.push(mapRedisLandToJson(landObj));
+          // C. 组装 JSON 数组
+          const landsJson: LandData[] = [];
+          if (landsRaw) {
+            landsRaw.forEach((res) => {
+              const landObj = res as unknown as Record<string, string>;
+              if (landObj && Object.keys(landObj).length > 0) {
+                landsJson.push(mapRedisLandToJson(landObj));
+              }
+            });
+          }
+
+          // D. 写入数据库
+          await prisma.player.update({
+            where: { id: playerId },
+            data: {
+              gold: Number(playerData.gold || 0),
+              exp: Number(playerData.exp || 0),
+              level: Number(playerData.level || 1),
+              landCount: landCount,
+              hasDog: playerData.hasDog === 'true',
+              dogActiveUntil: playerData.dogActiveUntil && Number(playerData.dogActiveUntil) > 0
+                ? new Date(Number(playerData.dogActiveUntil))
+                : null,
+              lands: landsJson as any
             }
           });
+        } catch (err: any) {
+          console.error(`[Sync] Failed to sync player ${playerId}:`, err.message);
         }
-
-        // 5. 写入数据库 (包含 lands JSON)
-        return prisma.player.update({
-          where: { id: realPlayerId },
-          data: {
-            gold: Number(playerData.gold || 0),
-            exp: Number(playerData.exp || 0),
-            level: Number(playerData.level || 1),
-            landCount: landCount,
-            hasDog: playerData.hasDog === 'true',
-            dogActiveUntil: playerData.dogActiveUntil && Number(playerData.dogActiveUntil) > 0
-              ? new Date(Number(playerData.dogActiveUntil))
-              : null,
-            // [核心修改] 将土地数据存入 JSON 字段
-            lands: landsJson as any
-          }
-        }).catch(err => console.error(`[Sync] Player ${realPlayerId} failed:`, err.message));
       });
 
       await Promise.all(operations);
     }
-  } catch (err) {
-    console.error('[Sync] Error syncing players:', err);
-  }
 
-  return hasMoreWork;
+    // 4. Acknowledge 消息 (即使个别玩家同步失败，也不回退消息，避免死循环阻塞。也可以选择只 Ack 成功的)
+    // 这里选择全部 Ack，假设错误是瞬时的或数据已被覆盖
+    if (messageIdsToAck.length > 0) {
+      await redisClient.xAck(KEYS.MQ_GAME_EVENTS, KEYS.GROUP_NAME_SYNC, messageIdsToAck);
+    }
+
+  } catch (err) {
+    console.error('[Sync] Error processing stream:', err);
+  }
 }
 
 async function startSyncLoop() {
   if (!redisClient.isOpen) await redisClient.connect();
-  console.log('✅ Sync Worker connected to Redis (JSONB Mode)');
+  if (!blockingClient.isOpen) await blockingClient.connect(); // Connect blocking client
+  console.log('✅ Sync Worker connected to Redis (Stream Mode)');
 
-  // 启动时清理一下旧的 dirty:lands，防止残留
-  await redisClient.del(KEYS.DIRTY_LANDS);
+  await initStream();
 
   while (!isShuttingDown) {
-    try {
-      const busy = await syncDirtyPlayers();
-      const sleepTime = busy ? 50 : 2000;
-      await new Promise(resolve => setTimeout(resolve, sleepTime));
-    } catch (error) {
-      console.error('[Sync] Critical loop error:', error);
-      await new Promise(resolve => setTimeout(resolve, 5000));
-    }
+    await processStreamMessages();
+    // 循环间隔由 xReadGroup 的 BLOCK 控制，这里无需额外 sleep，但在无消息时 BLOCK 返回后立即再次循环
+    // 为避免由于 Redis 错误导致的 tight loop，可以在 catch 中加 sleep
   }
+
+  await blockingClient.disconnect(); // Disconnect blocking client
+  await redisClient.disconnect();
   process.exit(0);
 }
 
