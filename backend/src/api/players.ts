@@ -15,7 +15,7 @@ router.get('/logs', async (req, res) => {
   const playerId = req.query.playerId as string;
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 50;
-  
+
   // 计算 Redis zRange 的索引范围
   const start = (page - 1) * limit;
   const end = start + limit - 1;

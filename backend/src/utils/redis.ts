@@ -34,7 +34,6 @@ export default redisClient;
 // 支持 gold (金币榜), level (等级榜), active (活跃榜)
 export const updateLeaderboard = async (type: 'gold' | 'level' | 'active', playerId: string, score: number) => {
   const key = `leaderboard:${type}`;
-  // ZADD leaderboard:gold 1000 "player_id_123"
   await redisClient.zAdd(key, { score, value: playerId });
 };
 
@@ -43,9 +42,6 @@ export const getTopPlayers = async (type: 'gold' | 'level' | 'active', page: num
   const key = `leaderboard:${type}`;
   const start = (page - 1) * limit;
   const stop = start + limit - 1;
-
-  // ZREVRANGE: 按分数从高到低排序 (Active=时间戳越大越新; Gold=越大越富有)
-  // 返回结构: [{value: 'playerId', score: 123}, ...]
   return await redisClient.zRangeWithScores(key, start, stop, { REV: true });
 };
 
@@ -62,19 +58,17 @@ export const KEYS = {
   // Hash: 土地数据 game:land:{playerId}:{position}
   LAND: (pid: string, pos: number) => `game:land:${pid}:${pos}`,
 
-  // [新增] Redis Stream Key
+  // [原有] Game Stream Key
   MQ_GAME_EVENTS: 'mq:game:events',
 
-  // [新增] Consumer Group 名称
+
+
+  // [新增] Consumer Group 名称 (复用或新建)
   GROUP_NAME_SYNC: 'group:sync',
   CONSUMER_NAME: `consumer:${process.env.HOSTNAME || 'worker-1'}`,
 
   // Set: 某块地的偷窃者记录 game:land:{pid}:{pos}:thieves
   LAND_THIEVES: (pid: string, pos: number) => `game:land:${pid}:${pos}:thieves`,
-
-  // // Set: 脏数据集合 (Worker 监控这些 Key 进行写库)
-  // DIRTY_PLAYERS: 'dirty:players',
-  // DIRTY_LANDS: 'dirty:lands',
 
   // Daily tracking keys
   DAILY_STEAL: (playerId: string, date?: string) => {
@@ -89,21 +83,13 @@ export const KEYS = {
 
 // ================= 辅助函数 =================
 
-/**
- * 将 Redis Hash (Record<string, string>) 转换为带类型的对象
- */
 export const parseRedisHash = <T>(data: Record<string, string>): T | null => {
   if (!data || Object.keys(data).length === 0) return null;
   const result: any = { ...data };
-
-  // 自动类型转换：数字字符串转数字，日期字符串转对象
   for (const key in result) {
     const val = result[key];
-    // 判断是否是数字
     if (!isNaN(Number(val)) && val !== '') {
-      // 特殊字段如果是时间戳，转为 Date
       if (key.endsWith('At') && Number(val) > 1000000000) {
-        // 部分逻辑可能需要在外层处理 Date，这里保持原样或根据需要转换
       } else {
         result[key] = Number(val);
       }
@@ -112,11 +98,14 @@ export const parseRedisHash = <T>(data: Record<string, string>): T | null => {
   return result as T;
 };
 
-// [修改] 新的 Key 前缀，避开旧数据的类型冲突
 export const KEY_GLOBAL_LOGS = 'farm:v2:global_logs';
 export const KEY_PLAYER_LOGS_PREFIX = 'farm:v2:player_logs:';
 
-
-// ==================== 社交关注 Key 前缀 ====================
-export const KEY_PREFIX_FOLLOWING = 'social:v2:following:'; // 我关注了谁
-export const KEY_PREFIX_FOLLOWERS = 'social:v2:followers:'; // 谁关注了我
+// ==================== 社交关注 Key 配置 (Social Dedicated) ====================
+export const SOCIAL_KEYS = {
+  FOLLOWING: 'social:v2:following:',  // ZSET: score=ts, value=playerId
+  FOLLOWERS: 'social:v2:followers:',  // ZSET: score=ts, value=playerId
+  MQ_EVENTS: 'mq:social:events',      // Stream Key
+  GROUP_NAME: 'group:social:sync',    // Consumer Group (Social Specific)
+  CONSUMER_NAME: `consumer:social:${process.env.HOSTNAME || 'worker-1'}`
+};

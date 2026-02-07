@@ -49,49 +49,66 @@ export class GameService {
 
   private static async ensurePlayerLoaded(playerId: string) {
     const playerKey = KEYS.PLAYER(playerId);
+
+    // Check if player exists in Redis
     if (await redisClient.exists(playerKey)) return;
 
-    // 1. 查询 DB (不需要 include lands，因为是字段了)
-    const player = await prisma.player.findUnique({
-      where: { id: playerId }
-    });
+    console.log(`[Cache] Miss for ${playerId}, loading from DB...`);
 
-    if (!player) throw new Error('Player not found');
+    // 1. Fetch from DB with Retry Logic (Fix for 500 error on fresh registration)
+    let player = null;
+    let attempts = 0;
+    while (!player && attempts < 3) {
+      player = await prisma.player.findUnique({
+        where: { id: playerId }
+        // 注意：如果是 JSON 字段，通常不需要 include，但为了保险起见（或如果是关系型），Prisma 默认行为即可
+        // 如果之前因为 include 报错，可以去掉 include: { lands: true }
+      });
+      if (!player) {
+        attempts++;
+        await new Promise(r => setTimeout(r, 500)); // Wait 500ms before retry
+      }
+    }
 
-    // 2. 写入玩家基础数据
+    if (!player) throw new Error('Player not found in database');
+
+    // 2. Prepare Redis Transaction (Atomic Write)
+    const pipeline = redisClient.multi();
+
+    const currentLandCount = player.landCount || GAME_CONFIG.LAND.INITIAL_COUNT;
+
+    // A. Player Data
     const playerData: Record<string, string> = {
       id: player.id,
       name: player.name,
       gold: player.gold.toString(),
       exp: player.exp.toString(),
       level: player.level.toString(),
-      avatar: player.avatar,
+      avatar: player.avatar || "https://robohash.org/default.png?set=set1",
       twitter: player.twitter || '',
       createdAt: player.createdAt.toISOString(),
-      landCount: player.landCount.toString(),
+      landCount: currentLandCount.toString(),
       hasDog: player.hasDog ? 'true' : 'false',
       dogActiveUntil: player.dogActiveUntil ? player.dogActiveUntil.getTime().toString() : '0',
       lastDisasterCheck: '0'
     };
-    await redisClient.hSet(playerKey, playerData);
+    pipeline.hSet(playerKey, playerData);
 
-    // 预热排行榜
-    await updateLeaderboard('gold', player.id, player.gold);
-    await updateLeaderboard('level', player.id, player.level);
-    await updateLeaderboard('active', player.id, Date.now());
+    // 3. Land Data
+    // [Fix] 关键修复：确保 lands 是数组。如果 DB 存了坏数据（对象），这里会把它重置为空数组，避免 .find 报错
+    let rawLands = player.lands;
+    if (!Array.isArray(rawLands)) {
+      console.warn(`[Data Corruption] Player ${playerId} lands is not an array. Resetting to empty.`, rawLands);
+      rawLands = [];
+    }
+    const savedLands = rawLands as unknown as LandData[];
 
-    // 3. 处理土地数据 (从 JSON 解析)
-    const savedLands = (player.lands as unknown as LandData[]) || [];
-
-    // 初始化 Redis 土地
-    const landCount = player.landCount;
-    for (let i = 0; i < landCount; i++) {
+    for (let i = 0; i < currentLandCount; i++) {
       const landKey = KEYS.LAND(player.id, i);
 
-      // 尝试从 JSON 中找对应位置的存档
+      // Try to find saved land at this position
       const saved = savedLands.find(l => l.position === i);
 
-      // 默认空地数据
       const landData: Record<string, string> = {
         id: i.toString(),
         position: i.toString(),
@@ -107,24 +124,30 @@ export class GameService {
         plantedAt: '0'
       };
 
-      // 如果有存档，覆盖默认值
       if (saved) {
-        landData.status = saved.status;
-        landData.landType = saved.landType;
+        landData.status = saved.status || LandStatus.EMPTY;
+        landData.landType = saved.landType || 'normal';
         landData.cropId = saved.cropType || '';
         landData.matureAt = saved.matureAt?.toString() || '0';
         landData.plantedAt = saved.plantedAt?.toString() || '0';
-        landData.remainingHarvests = saved.remainingHarvests.toString();
-        landData.stolenCount = saved.stolenCount.toString();
+        landData.remainingHarvests = (saved.remainingHarvests || 0).toString();
+        landData.stolenCount = (saved.stolenCount || 0).toString();
         landData.hasWeeds = saved.hasWeeds ? 'true' : 'false';
         landData.hasPests = saved.hasPests ? 'true' : 'false';
         landData.needsWater = saved.needsWater ? 'true' : 'false';
       }
 
-      await redisClient.hSet(landKey, landData);
+      pipeline.hSet(landKey, landData);
     }
 
-    await redisClient.expire(playerKey, GAME_CONFIG.REDIS_PLAYER_CACHE_TTL || 3600);
+    pipeline.expire(playerKey, GAME_CONFIG.REDIS_PLAYER_CACHE_TTL || 3600);
+
+    await pipeline.exec();
+
+    // Update leaderboards
+    updateLeaderboard('gold', player.id, player.gold);
+    updateLeaderboard('level', player.id, player.level);
+    updateLeaderboard('active', player.id, Date.now());
   }
 
   static async getPlayerState(playerId: string) {

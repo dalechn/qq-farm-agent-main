@@ -5,11 +5,22 @@
 
 // Next.js 使用 NEXT_PUBLIC_ 前缀的环境变量
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL || API_BASE;
+const AUTH_BASE = process.env.NEXT_PUBLIC_AUTH_URL || 'http://localhost:3002/api/auth';
 
-// 通用请求函数
+// 通用请求函数 (Game Server)
 async function request<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
+  return fetchWithHandling<T>(url, options);
+}
+
+// 通用请求函数 (Auth Server)
+async function requestAuth<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const url = `${AUTH_BASE}${endpoint}`;
+  return fetchWithHandling<T>(url, options);
+}
+
+// 统一处理 Fetch 响应
+async function fetchWithHandling<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...options,
     headers: {
@@ -98,6 +109,7 @@ export interface DogShopItem {
   foodDuration: number;
   catchRate: number;
   bitePenalty: number;
+  catchFleeRate?: number; // [新增]
 }
 
 export interface FertilizerShopItem {
@@ -272,15 +284,15 @@ export const feedDog = async () => {
   });
 };
 
-// [新增] 社交相关 API (Top-level)
+// [新增] 社交相关 API (Top-level) - 指向 Auth Server
 // 获取指定用户的关注列表 (公开, 支持分页)
 export const getFollowing = async (userId: string, page = 1, limit = 20) => {
-  return request<PaginatedFollows>(`/following?userId=${userId}&page=${page}&limit=${limit}`);
+  return requestAuth<PaginatedFollows>(`/following?userId=${userId}&page=${page}&limit=${limit}`);
 };
 
 // 获取指定用户的粉丝列表 (公开, 支持分页)
 export const getFollowers = async (userId: string, page = 1, limit = 20) => {
-  return request<PaginatedFollows>(`/followers?userId=${userId}&page=${page}&limit=${limit}`);
+  return requestAuth<PaginatedFollows>(`/followers?userId=${userId}&page=${page}&limit=${limit}`);
 };
 
 
@@ -304,8 +316,9 @@ export const publicApi = {
   getLeaderboard: (page = 1, limit = 20, sort: 'gold' | 'active' | 'level' = 'gold') =>
     request<PaginatedPlayers>(`/leaderboard?page=${page}&limit=${limit}&sort=${sort}`),
 
+  // [修改] Logs 指向 Auth Server
   getLogs: (playerId?: string, page = 1, limit = 50) =>
-    request<PaginatedLogs>(
+    requestAuth<PaginatedLogs>(
       playerId
         ? `/logs?playerId=${playerId}&page=${page}&limit=${limit}`
         : `/logs?page=${page}&limit=${limit}`
@@ -314,21 +327,13 @@ export const publicApi = {
   getCrops: () => request<ShopData>('/crops'),
 
   createPlayer: async (name: string) => {
-    const url = `${AUTH_BASE}/player`;
-    const response = await fetch(url, {
+    // 这里的 AUTH_BASE 已经包含 /api/auth，所以路径修正为 /player
+    // 注意：auth-server 定义是 app.post('/api/auth/player', ...)
+    // 如果 AUTH_BASE = .../api/auth，则 requestAuth('/player') => .../api/auth/player
+    return requestAuth('/player', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
       body: JSON.stringify({ name }),
     });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || 'Request failed');
-    }
-
-    return response.json();
   },
 };
 
@@ -339,34 +344,37 @@ export function createAgentApi(apiKey: string) {
 
   return {
     getMe: () => request<Player>('/me', { headers }),
-    getNotifications: () => request<Notification[]>('/notifications', { headers }),
+    getNotifications: () => requestAuth<Notification[]>('/notifications', { headers }),
     markNotificationsRead: (ids: number[]) =>
-      request<{ success: boolean }>('/notifications/read', {
+      requestAuth<{ success: boolean }>('/notifications/read', {
         method: 'POST',
         headers,
         body: JSON.stringify({ ids }),
       }),
     follow: (targetId: string) =>
-      request<{ success: boolean; isMutual: boolean }>('/follow', {
+      requestAuth<{ success: boolean; isMutual: boolean }>('/follow', {
         method: 'POST',
         headers,
         body: JSON.stringify({ targetId }),
       }),
     unfollow: (targetId: string) =>
-      request<{ success: boolean }>('/unfollow', {
+      requestAuth<{ success: boolean }>('/unfollow', {
         method: 'POST',
         headers,
         body: JSON.stringify({ targetId }),
       }),
     // [修改] 支持分页
     getFollowing: (page = 1, limit = 20) =>
-      request<PaginatedFollows>(`/following?page=${page}&limit=${limit}`, { headers }),
+      requestAuth<PaginatedFollows>(`/following?page=${page}&limit=${limit}`, { headers }),
     getFollowers: (page = 1, limit = 20) =>
-      request<PaginatedFollows>(`/followers?page=${page}&limit=${limit}`, { headers }),
+      requestAuth<PaginatedFollows>(`/followers?page=${page}&limit=${limit}`, { headers }),
 
-    getFriends: () => request<FollowUser[]>('/friends', { headers }),
+    getFriends: () => requestAuth<FollowUser[]>('/friends', { headers }),
+
+    // 农场数据仍在 Game Server
     getFriendFarm: (friendId: string) =>
-      request<Player>(`/friends/${friendId}/farm`, { headers }),
+      request<Player>(`/friends/${friendId}/farm`, { headers }), // 注意：后端可能需要适配路由，或者这个接口如果已废弃
+
     steal: (victimId: string, position: number) =>
       request<{
         success: boolean;

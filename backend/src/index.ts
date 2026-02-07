@@ -7,9 +7,7 @@ import { connectRedis } from './utils/redis';
 import { setupWebSocket } from './utils/websocket';
 
 // 引入新拆分的路由
-import playerRoutes from './api/players';
 import gameRoutes from './api/game';
-import socialRoutes from './api/social';
 import { CROPS } from './utils/game-keys';
 
 dotenv.config();
@@ -21,9 +19,7 @@ app.use(express.json());
 import { GameService } from './services/GameService';
 
 // ==================== 注册路由 ====================
-app.use('/api', playerRoutes);
 app.use('/api', gameRoutes);
-app.use('/api', socialRoutes);
 
 // ==================== 服务器启动 ====================
 
