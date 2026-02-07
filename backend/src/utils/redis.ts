@@ -31,24 +31,29 @@ export default redisClient;
 
 
 
-// ==================== 新增：排行榜 (ZSET) ====================
+// ==================== [修改] 排行榜 (ZSET) ====================
 
-// [修改] 扩展类型定义，增加 'active'
+// 支持 gold (金币榜), level (等级榜), active (活跃榜)
 export const updateLeaderboard = async (type: 'gold' | 'level' | 'active', playerId: string, score: number) => {
   const key = `leaderboard:${type}`;
-  // ZADD leaderboard:active 1700000000 "player_id"
+  // ZADD leaderboard:gold 1000 "player_id_123"
   await redisClient.zAdd(key, { score, value: playerId });
 };
 
-// [修改] 扩展类型定义
+// 支持分页
 export const getTopPlayers = async (type: 'gold' | 'level' | 'active', page: number = 1, limit: number = 20) => {
   const key = `leaderboard:${type}`;
   const start = (page - 1) * limit;
-  const end = start + limit - 1;
+  const stop = start + limit - 1;
 
   // ZREVRANGE: 按分数从高到低排序 (Active=时间戳越大越新; Gold=越大越富有)
-  // 返回带分数的列表，分数对 active 来说就是时间戳
-  return await redisClient.zRangeWithScores(key, start, end, { REV: true });
+  // 返回结构: [{value: 'playerId', score: 123}, ...]
+  return await redisClient.zRangeWithScores(key, start, stop, { REV: true });
+};
+
+// 获取排行榜总人数
+export const getLeaderboardCount = async (type: 'gold' | 'level' | 'active') => {
+  return await redisClient.zCard(`leaderboard:${type}`);
 };
 
 // ================= Key 常量定义 =================
@@ -93,6 +98,7 @@ export const parseRedisHash = <T>(data: Record<string, string>): T | null => {
     if (!isNaN(Number(val)) && val !== '') {
       // 特殊字段如果是时间戳，转为 Date
       if (key.endsWith('At') && Number(val) > 1000000000) {
+        // 部分逻辑可能需要在外层处理 Date，这里保持原样或根据需要转换
       } else {
         result[key] = Number(val);
       }
@@ -100,8 +106,6 @@ export const parseRedisHash = <T>(data: Record<string, string>): T | null => {
   }
   return result as T;
 };
-
-
 
 // [修改] 新的 Key 前缀，避开旧数据的类型冲突
 export const KEY_GLOBAL_LOGS = 'farm:v2:global_logs';

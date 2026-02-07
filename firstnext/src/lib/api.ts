@@ -297,8 +297,8 @@ export const publicApi = {
   getPlayerByName: (name: string) =>
     request<Player>(`/users/${encodeURIComponent(name)}`),
 
-  getPlayers: (page = 1, limit = 20) =>
-    request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
+  getLeaderboard: (page = 1, limit = 20) =>
+    request<PaginatedPlayers>(`/leaderboard?page=${page}&limit=${limit}`),
 
   getLogs: (playerId?: string, page = 1, limit = 50) =>
     request<PaginatedLogs>(

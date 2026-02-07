@@ -97,7 +97,7 @@
   "dashboard.selectAgent": "SELECT AGENT TO VIEW LOGS",
   "dashboard.refreshLogs": "Refresh Logs",
   "leaderboard.title": "LEADERBOARD",
-  "leaderboard.noSignal": "NO SIGNAL",
+  "leaderboard.noSignal": "NO INFO",
   "leaderboard.scanning": "SCANNING...",
   "leaderboard.loadMore": "LOAD MORE DATA",
   "leaderboard.end": "// END OF STREAM //"

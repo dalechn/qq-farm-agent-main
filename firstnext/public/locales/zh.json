@@ -97,7 +97,7 @@
   "dashboard.selectAgent": "选择代理查看日志",
   "dashboard.refreshLogs": "刷新日志",
   "leaderboard.title": "排行榜",
-  "leaderboard.noSignal": "没有信号",
+  "leaderboard.noSignal": "暂无排行榜",
   "leaderboard.scanning": "扫描中...",
   "leaderboard.loadMore": "加载更多数据",
   "leaderboard.end": "// 数据流结束 //"

@@ -2,11 +2,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { publicApi, getMe, Player, Crop, ActionLog, ShopData } from '@/lib/api';
-import { useWebSocket, WebSocketMessage } from './useWebSocket';
+// import { useWebSocket, WebSocketMessage } from './useWebSocket';
 
 interface UseGameDataOptions {
   refreshInterval?: number;
 }
+
+// 定义排序类型
+export type SortType = 'gold' | 'active' | 'level';
 
 export function useGameData(options: UseGameDataOptions = {}) {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -27,15 +30,17 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const [isFetchingMorePlayers, setIsFetchingMorePlayers] = useState(false);
   const [totalPlayersCount, setTotalPlayersCount] = useState(0);
 
+  // [新增] 排序状态
+  const [sortBy, setSortBy] = useState<SortType>('gold');
+
   // 日志分页状态
   const [logPage, setLogPage] = useState(1);
   const [hasMoreLogs, setHasMoreLogs] = useState(true);
   const [isFetchingMoreLogs, setIsFetchingMoreLogs] = useState(false);
 
-  // ==========================================
-  // [修复] 更新玩家数据
-  // 移除 [myPlayer] 依赖，防止在 FarmDashboard 中引发 useEffect 死循环
-  // ==========================================
+  // [新增] 活动中心UI状态
+  const [isActivityOpen, setIsActivityOpen] = useState(false);
+
   const updatePlayer = useCallback((updatedPlayer: Player) => {
     setPlayers(prev => prev.map(p => {
       if (p.id === updatedPlayer.id) {
@@ -44,20 +49,21 @@ export function useGameData(options: UseGameDataOptions = {}) {
       return p;
     }));
 
-    // 使用函数式更新来检查 prevMyPlayer，无需将 myPlayer 加入依赖数组
     setMyPlayer(prevMyPlayer => {
       if (prevMyPlayer && prevMyPlayer.id === updatedPlayer.id) {
         return updatedPlayer;
       }
       return prevMyPlayer;
     });
-  }, []); // 依赖数组为空，函数引用永远稳定
+  }, []);
 
-  // 获取玩家列表
+  // 获取玩家列表 (包含排序逻辑)
   const fetchPlayers = useCallback(async (pageNum: number, isLoadMore = false) => {
     try {
       if (isLoadMore) setIsFetchingMorePlayers(true);
-      const response = await publicApi.getPlayers(pageNum, 20);
+
+      // 使用当前的 sortBy
+      const response = await publicApi.getLeaderboard(pageNum, 20, sortBy);
 
       if (isLoadMore) {
         setPlayers(prev => {
@@ -77,7 +83,17 @@ export function useGameData(options: UseGameDataOptions = {}) {
     } finally {
       setIsFetchingMorePlayers(false);
     }
-  }, []);
+  }, [sortBy]); // 依赖 sortBy
+
+  // [新增] 当排序改变时，重置列表并刷新
+  useEffect(() => {
+    // 切换排序时，先清空列表或显示加载态
+    setPlayers([]);
+    setPlayerPage(1);
+    setHasMorePlayers(true);
+    // 重新获取第一页
+    fetchPlayers(1, false);
+  }, [sortBy, fetchPlayers]);
 
   const loadMorePlayers = useCallback(() => {
     if (!hasMorePlayers || isFetchingMorePlayers) return;
@@ -96,11 +112,9 @@ export function useGameData(options: UseGameDataOptions = {}) {
     }
   }, []);
 
-  // 获取日志逻辑
   const fetchLogs = useCallback(async (pageNum: number, isLoadMore = false, playerId?: string) => {
     try {
       if (isLoadMore) setIsFetchingMoreLogs(true);
-
       const response = await publicApi.getLogs(playerId, pageNum, 50);
 
       if (isLoadMore) {
@@ -112,7 +126,6 @@ export function useGameData(options: UseGameDataOptions = {}) {
       } else {
         setLogs(response.data);
       }
-
       setHasMoreLogs(response.pagination.hasMore);
     } catch (err: any) {
       console.error('Failed to fetch logs:', err);
@@ -128,7 +141,6 @@ export function useGameData(options: UseGameDataOptions = {}) {
     fetchLogs(nextPage, true, playerId);
   }, [logPage, hasMoreLogs, isFetchingMoreLogs, fetchLogs]);
 
-  // 获取“我”的信息
   const fetchMe = useCallback(async () => {
     if (typeof window !== 'undefined' && localStorage.getItem('player_key')) {
       try {
@@ -145,11 +157,12 @@ export function useGameData(options: UseGameDataOptions = {}) {
     fetchLogs(1);
   }, [fetchLogs]);
 
+  // 初始化（注意：fetchPlayers 已经在 sortBy 的 useEffect 里被调用了，所以这里可以只负责其他初始化）
   useEffect(() => {
     const init = async () => {
       setIsLoading(true);
       await Promise.all([
-        fetchPlayers(1),
+        // fetchPlayers(1), // 这里的调用其实和 sortBy 的 useEffect 重复了，不过 React 18+ 一般会合并，或者可以保留以确保初始化
         fetchCrops(),
         fetchLogs(1),
         fetchMe()
@@ -157,8 +170,9 @@ export function useGameData(options: UseGameDataOptions = {}) {
       setIsLoading(false);
     };
     init();
-  }, [fetchPlayers, fetchCrops, fetchLogs, fetchMe]);
+  }, [/* fetchPlayers, */ fetchCrops, fetchLogs, fetchMe]);
 
+  /*
   const handleWebSocketMessage = useCallback((message: WebSocketMessage) => {
     switch (message.type) {
       case 'player_joined':
@@ -188,6 +202,8 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const { isConnected } = useWebSocket({
     onMessage: handleWebSocketMessage,
   });
+  */
+  const isConnected = false;
 
   const stats = {
     totalPlayers: totalPlayersCount,
@@ -216,11 +232,17 @@ export function useGameData(options: UseGameDataOptions = {}) {
     loadMoreLogs,
     refreshLogs,
 
+    // 暴露排序控制
+    sortBy,
+    setSortBy,
+
     updatePlayer,
     fetchMe,
 
     error,
     isConnected,
+    isActivityOpen,
+    setIsActivityOpen,
     refresh: () => {
       setPlayerPage(1);
       setLogPage(1);

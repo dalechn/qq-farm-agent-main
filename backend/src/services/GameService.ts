@@ -1,12 +1,31 @@
 // backend/src/services/GameService.ts
 
-import { redisClient, KEYS, parseRedisHash } from '../utils/redis';
+import { redisClient, KEYS, parseRedisHash, updateLeaderboard } from '../utils/redis';
 import { LUA_SCRIPTS } from '../utils/lua-scripts';
 import prisma from '../utils/prisma';
 import { GAME_CONFIG, CROPS, LandStatus } from '../utils/game-keys';
 import { broadcast } from '../utils/websocket';
 
 export class GameService {
+
+  // ==========================================
+  // [新增] 同步排行榜辅助函数
+  // ==========================================
+  private static async syncPlayerRank(playerId: string) {
+    try {
+      // 从 Redis Hash 中读取最新的 gold 和 level
+      const [goldStr, levelStr] = await redisClient.hmGet(KEYS.PLAYER(playerId), ['gold', 'level']);
+
+      if (goldStr) {
+        await updateLeaderboard('gold', playerId, Number(goldStr));
+      }
+      if (levelStr) {
+        await updateLeaderboard('level', playerId, Number(levelStr));
+      }
+    } catch (e) {
+      console.error(`Failed to sync rank for ${playerId}`, e);
+    }
+  }
 
   // ==========================================
   // 缓存与加载逻辑
@@ -43,6 +62,10 @@ export class GameService {
       lastDisasterCheck: '0'
     };
     await redisClient.hSet(playerKey, playerData);
+
+    // 预热排行榜
+    await updateLeaderboard('gold', player.id, player.gold);
+    await updateLeaderboard('level', player.id, player.level);
 
     for (const land of player.lands) {
       const landKey = KEYS.LAND(player.id, land.position);
@@ -120,19 +143,6 @@ export class GameService {
           GAME_CONFIG.DISASTER_CHECK_INTERVAL.toString()
         ]
       });
-      // const affected = res as number[];
-      // if (affected && affected.length > 0) {
-      //   broadcast({
-      //     type: 'action',
-      //     action: 'DISASTER',
-      //     playerId,
-      //     details: 'Farm status updated!',
-      //     data: {
-      //       positions: affected,
-      //       type: 'disaster'
-      //     }
-      //   }, false);
-      // }
     } catch (e) { }
   }
 
@@ -172,15 +182,18 @@ export class GameService {
     });
     this.checkLuaError(res);
 
+    // [同步] 更新排行榜 (消耗金币 + 可能升级)
+    await this.syncPlayerRank(playerId);
+
     const isLevelUp = (res as any)[1] === 'true';
     if (isLevelUp) {
       broadcast({
         type: 'action',
         action: 'LEVEL_UP',
         playerId,
-        playerName, // Ensure playerName is passed if available
+        playerName,
         details: 'Level Up!',
-        data: { level: 'unknown' } // Lua doesn't return new level, might need to fetch or just notify
+        data: { level: 'unknown' }
       }, false);
     }
 
@@ -233,6 +246,9 @@ export class GameService {
     });
     this.checkLuaError(res);
 
+    // [同步] 更新排行榜 (增加金币 + 可能升级)
+    await this.syncPlayerRank(playerId);
+
     const [finalGold, finalExp, finalRateStr, nextRemaining, isLevelUpStr, hasWeedsStr, hasPestsStr, needsWaterStr] = res as [number, number, string, number, string, string, string, string];
 
     const playerName = await this.getPlayerName(playerId);
@@ -246,14 +262,8 @@ export class GameService {
     const needsWater = needsWaterStr === 'true';
     let healthLoss = 0;
 
-    // Calculate potential loss if there were weeds/pests
-    // Note: This is an estimation for display. The actual deduction happened in Lua via rate.
-    // Logic: baseGold * (1 - rate) is total loss.
-    // We want specifically loss due to health.
-    // If rate was reduced by HEALTH_PENALTY (0.2) for each issue.
     if (hasWeeds || hasPests || needsWater) {
       const penaltyCount = (hasWeeds ? 1 : 0) + (hasPests ? 1 : 0) + (needsWater ? 1 : 0);
-      // Loss = BaseGold * (PenaltyRate * Count)
       healthLoss = Math.floor(baseGold * (HEALTH_PENALTY * penaltyCount));
     }
 
@@ -276,7 +286,7 @@ export class GameService {
   }
 
   // ==========================================
-  // 3. [修复] 偷菜 - 返回完整结构
+  // 3. [修复] 偷菜
   // ==========================================
   static async steal(stealerId: string, victimId: string, position: number) {
     if (stealerId === victimId) throw new Error("Cannot steal self");
@@ -314,7 +324,11 @@ export class GameService {
       });
 
       this.checkLuaError(res);
-      // Lua 成功返回的是 stolenCount，但我们不需要在这里用到它
+
+      // [同步] 更新排行榜：偷菜者金币增加，(受害者金币不变，只在收获时结算减少，但狗咬会扣钱)
+      // Lua 脚本里 STEAL 操作本身不会扣除受害者的金币，只是标记 stolenCount，受害者损失是在 Harvest 时计算。
+      // 但是如果被狗咬了，偷窃者会扣钱。
+      await this.syncPlayerRank(stealerId);
 
       const [stealerName, victimName] = await Promise.all([
         this.getPlayerName(stealerId),
@@ -331,7 +345,7 @@ export class GameService {
           gold: stealAmount,
           victimId,
           victimName,
-          cropId: crop!.type, // Add checks if needed, but crop should be defined here
+          cropId: crop!.type,
           cropName: crop!.name,
           amount: 1
         }
@@ -353,19 +367,21 @@ export class GameService {
         }
       }, false);
 
-      // [修复] 返回前端需要的完整数据结构
       return {
         success: true,
         stolen: {
           cropType: crop!.type,
           cropName: crop!.name,
-          amount: 1, // 偷菜目前逻辑是按次计算，相当于“一捆”或“一份”
+          amount: 1,
           goldValue: stealAmount
         }
       };
 
     } catch (e: any) {
       if (e.message === 'Bitten by dog') {
+        // 狗咬了，扣钱了，更新排行榜
+        await this.syncPlayerRank(stealerId);
+
         const stealerName = await this.getPlayerName(stealerId);
         broadcast({
           type: 'action',
@@ -396,9 +412,7 @@ export class GameService {
         return { success: false, reason: 'bitten', penalty: BITE_PENALTY };
       }
 
-      // Handle daily steal limit error
       if (e.message === 'Daily steal limit reached') {
-        // Extract current and limit from Lua error response if available
         const current = (e as any).current || 0;
         const limit = (e as any).limit || GAME_CONFIG.MAX_DAILY_STEAL_GOLD;
         return {
@@ -427,6 +441,9 @@ export class GameService {
       arguments: [field, xpGain.toString(), GAME_CONFIG.MAX_DAILY_CARE_EXP.toString()]
     });
     this.checkLuaError(res);
+
+    // [同步] 更新排行榜 (增加经验，可能升级)
+    await this.syncPlayerRank(operatorId);
 
     const [actualExpGain, isLevelUpStr] = res as [number, string];
 
@@ -481,12 +498,14 @@ export class GameService {
 
     const expGain = GAME_CONFIG.EXP_RATES.SHOVEL;
 
-    // operatorId gets EXP, ownerId's land is cleared
     const res = await redisClient.eval(LUA_SCRIPTS.SHOVEL, {
       keys: [KEYS.LAND(ownerId, position), KEYS.DIRTY_LANDS, KEYS.PLAYER(operatorId), KEYS.DIRTY_PLAYERS],
       arguments: [expGain.toString(), (operatorId === ownerId).toString()]
     });
     this.checkLuaError(res);
+
+    // [同步]
+    await this.syncPlayerRank(operatorId);
 
     const operatorName = await this.getPlayerName(operatorId);
 
@@ -526,7 +545,7 @@ export class GameService {
     return { success: true, expGain };
   }
 
-  // ... (upgradeLand, expandLand, useFertilizer, buyOrFeedDog 保持不变)
+  // ... (upgradeLand, expandLand, useFertilizer, buyOrFeedDog)
   static async upgradeLand(playerId: string, position: number) {
     await this.ensurePlayerLoaded(playerId);
     const landKey = KEYS.LAND(playerId, position);
@@ -535,6 +554,9 @@ export class GameService {
     if (!upgradeConfig || !upgradeConfig.next) throw new Error('Max level reached');
     const res = await redisClient.eval(LUA_SCRIPTS.UPGRADE_LAND, { keys: [landKey, KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS], arguments: [upgradeConfig.price.toString(), upgradeConfig.next, upgradeConfig.levelReq.toString()] });
     this.checkLuaError(res);
+
+    await this.syncPlayerRank(playerId); // 消耗金币
+
     broadcast({
       type: 'action',
       action: 'UPGRADE_LAND',
@@ -553,12 +575,10 @@ export class GameService {
   static async expandLand(playerId: string) {
     await this.ensurePlayerLoaded(playerId);
 
-    // 1. 计算费用 (这里读一次 Redis 没关系，只是为了展示给用户或预判，实际扣费在 Lua)
     const countStr = await redisClient.hGet(KEYS.PLAYER(playerId), 'landCount');
     const currentCount = parseInt(countStr || '6');
     const cost = GAME_CONFIG.LAND.EXPAND_BASE_COST + (currentCount * 1000);
 
-    // 2. 调用 Lua
     const res = await redisClient.eval(LUA_SCRIPTS.EXPAND_LAND, {
       keys: [
         KEYS.PLAYER(playerId),
@@ -574,7 +594,8 @@ export class GameService {
 
     this.checkLuaError(res);
 
-    // Lua 返回 [newPos, newTotalCount]
+    await this.syncPlayerRank(playerId); // 消耗金币
+
     const [newPos, newTotal] = res as [number, number];
 
     broadcast({
@@ -598,6 +619,9 @@ export class GameService {
     const config = GAME_CONFIG.FERTILIZER[type];
     const res = await redisClient.eval(LUA_SCRIPTS.FERTILIZE, { keys: [KEYS.LAND(playerId, position), KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS], arguments: [config.price.toString(), config.reduceSeconds.toString(), Date.now().toString()] });
     this.checkLuaError(res);
+
+    await this.syncPlayerRank(playerId); // 消耗金币
+
     const newMatureAt = (res as any)[0];
     broadcast({
       type: 'action',
@@ -620,6 +644,9 @@ export class GameService {
     const price = isFeed ? FOOD_PRICE : PRICE;
     const res = await redisClient.eval(LUA_SCRIPTS.BUY_OR_FEED_DOG, { keys: [KEYS.PLAYER(playerId), KEYS.DIRTY_PLAYERS], arguments: [price.toString(), FOOD_DURATION.toString(), Date.now().toString(), isFeed ? 'true' : 'false'] });
     this.checkLuaError(res);
+
+    await this.syncPlayerRank(playerId); // 消耗金币
+
     broadcast({
       type: 'action',
       action: isFeed ? 'FEED_DOG' : 'BUY_DOG',

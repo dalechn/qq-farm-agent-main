@@ -4,7 +4,7 @@ import { Router } from 'express';
 import { GameService } from '../services/GameService';
 import { authenticateApiKey } from '../middleware/auth';
 import { CROPS } from '../utils/game-keys';
-import { redisClient, KEYS } from '../utils/redis';
+import { redisClient, getTopPlayers, getLeaderboardCount } from '../utils/redis';
 import prisma from '../utils/prisma';
 
 const router: Router = Router();
@@ -69,7 +69,6 @@ router.get('/users/:name', async (req, res) => {
   }
 });
 
-// 排行榜
 router.get('/players', async (req, res) => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 20;
@@ -115,6 +114,58 @@ router.get('/players', async (req, res) => {
   }
 });
 
+// [修改] 排行榜 - 全 Redis 实现
+router.get('/leaderboard', async (req, res) => {
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 20;
+  // sort 支持: 'gold' (默认) | 'active' | 'level'
+  const sort = (req.query.sort as 'gold' | 'active' | 'level') || 'gold';
+
+  try {
+    // 1. 从 Redis ZSET 获取 ID 列表
+    const topList = await getTopPlayers(sort, page, limit);
+    const total = await getLeaderboardCount(sort);
+
+    // topList 是 [{ value: 'playerId', score: 123 }, ...]
+    const targetIds = topList.map(item => item.value);
+
+    if (targetIds.length === 0) {
+      return res.json({
+        data: [],
+        pagination: { page, limit, total, totalPages: 0, hasMore: false }
+      });
+    }
+
+    // 2. 批量获取详细信息
+    const playersData = await Promise.all(
+      targetIds.map(async (playerId) => {
+        try {
+          const player = await GameService.getPlayerState(playerId);
+          // 优化：排行榜列表不需要显示详细的土地数据，减少网络传输
+          // if (player) (player as any).lands = []; 
+          return player;
+        } catch (e) {
+          return null;
+        }
+      })
+    );
+
+    const validPlayers = playersData.filter(p => p !== null);
+
+    res.json({
+      data: validPlayers,
+      pagination: {
+        page, limit, total,
+        totalPages: Math.ceil(total / limit),
+        hasMore: (page * limit) < total
+      }
+    });
+  } catch (error) {
+    console.error('Leaderboard error:', error);
+    res.status(500).json({ error: 'Failed to fetch players' });
+  }
+});
+
 // ==========================================
 // 2. 基础配置
 // ==========================================
@@ -148,9 +199,6 @@ router.get('/crops', (req, res) => {
 // ==========================================
 // 3. 游戏操作 (全 Redis)
 // ==========================================
-
-// 辅助：从 Redis 获取玩家名字 (替代 DB 查询)
-// 已移至 GameService 内部
 
 // 种植
 router.post('/plant', authenticateApiKey, async (req: any, res) => {

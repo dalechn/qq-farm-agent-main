@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../utils/prisma';
-import redisClient from '../utils/redis';
+import redisClient, { updateLeaderboard } from '../utils/redis';
 
 export const authenticateApiKey = async (req: Request, res: Response, next: NextFunction) => {
   const apiKey = req.header('X-API-KEY');
@@ -32,6 +32,13 @@ export const authenticateApiKey = async (req: Request, res: Response, next: Next
 
     // 将玩家 ID 存入请求对象
     (req as any).playerId = playerId;
+
+    // [新增] ⚡️ 更新“最新活动”排行榜 (Fire-and-forget)
+    // 记录当前时间戳，用于 sort=active
+    updateLeaderboard('active', playerId, Date.now()).catch((err) => {
+      console.error('Failed to update active leaderboard', err);
+    });
+
     next();
   } catch (error) {
     console.error('Auth Middleware Error:', error);

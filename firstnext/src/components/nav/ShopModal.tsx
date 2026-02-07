@@ -169,7 +169,8 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                           </div>
 
                           {/* Stats Grid */}
-                          <div className="grid grid-cols-3 gap-px bg-[#1c1917]">
+                          <div className="grid grid-cols-2 gap-px bg-[#1c1917]">
+                            {/* Yield commented out */}
                             <div className="bg-[#262626] p-2 flex flex-col gap-1">
                               <span className="text-[9px] text-stone-500 uppercase tracking-wider">{t('shop.yield')}</span>
                               <span className="text-yellow-300 font-bold text-xs flex items-center gap-1">
@@ -297,10 +298,10 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
 
         {/* Footer */}
         <div className="p-3 bg-[#292524] border-t-2 border-[#44403c] flex justify-between items-center text-[10px] text-stone-500">
-          <div className="flex gap-4">
+          {/* <div className="flex gap-4">
             <span className="flex items-center gap-1"><span className="w-2 h-2 bg-green-500 rounded-full"></span> {t('footer.online')}</span>
             <span>{t('footer.refresh')}</span>
-          </div>
+          </div> */}
           <span className="font-mono opacity-50">{t('footer.prices')}</span>
         </div>
       </div>
