@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  X, 
-  Users, 
-  Loader2, 
-  Coins, 
-  ArrowRight, 
+import {
+  X,
+  Users,
+  Loader2,
+  Coins,
+  ArrowRight,
   ArrowLeftRight // [新增] 用于显示互相关注图标
 } from 'lucide-react';
 import { type FollowUser, getFollowers, getFollowing } from '@/lib/api';
@@ -24,10 +24,11 @@ interface UserListSidebarProps {
 
 export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSidebarProps) {
   const router = useRouter();
-  
+
   const [data, setData] = useState<ExtendedFollowUser[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  
+  const [error, setError] = useState<string | null>(null); // [新增]
+
   // 分页状态
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
@@ -38,10 +39,11 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
     if (isOpen && playerId) {
       setPage(1);
       setData([]);
+      setError(null);
       setHasMore(true);
       fetchData(1, false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, type, playerId]);
 
   const fetchData = async (pageNum: number, isLoadMore: boolean) => {
@@ -50,22 +52,34 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
         setIsLoadingMore(true);
       } else {
         setIsLoading(true);
+        setError(null);
       }
 
       const apiFunc = type === 'following' ? getFollowing : getFollowers;
       const res = await apiFunc(playerId, pageNum, 20);
-      
+
+
+      // [Safety Check] Ensure response is valid
+      if (!res || !res.data || !res.pagination) {
+        console.error("Invalid API response:", res);
+        // @ts-ignore check for error property from weird fetchWithHandling return
+        const errorMsg = res?.error?.error || res?.reason || "Failed to load list";
+        if (!isLoadMore) setError(errorMsg);
+        return;
+      }
+
       if (isLoadMore) {
         // [类型断言] 这里假设 API 返回的数据可能包含 isMutual
         setData(prev => [...prev, ...res.data as ExtendedFollowUser[]]);
       } else {
         setData(res.data as ExtendedFollowUser[]);
       }
-      
+
       setHasMore(res.pagination.hasMore);
-      
+
     } catch (err) {
       console.error(err);
+      if (!isLoadMore) setError("Network error occurred");
     } finally {
       setIsLoading(false);
       setIsLoadingMore(false);
@@ -96,9 +110,8 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
 
       {/* Sidebar */}
       <div
-        className={`fixed top-0 right-0 h-full w-[90%] sm:w-[360px] bg-[#1c1917] border-l-2 border-stone-800 shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col ${
-          isOpen ? 'translate-x-0' : 'translate-x-full'
-        }`}
+        className={`fixed top-0 right-0 h-full w-[90%] sm:w-[360px] bg-[#1c1917] border-l-2 border-stone-800 shadow-2xl transform transition-transform duration-300 ease-in-out z-50 flex flex-col ${isOpen ? 'translate-x-0' : 'translate-x-full'
+          }`}
       >
         {/* Header */}
         <div className="flex-none h-12 border-b-2 border-stone-700 bg-[#292524] flex items-center justify-between px-4 select-none">
@@ -106,8 +119,8 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
             <Users className="w-4 h-4 text-orange-500" />
             <span className="tracking-widest">{type} LIST</span>
           </div>
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="text-stone-500 hover:text-white transition-colors hover:bg-red-900/50 p-1 rounded-sm"
           >
             <X className="w-5 h-5" />
@@ -120,6 +133,17 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
             <div className="flex flex-col items-center justify-center h-40 text-stone-500 animate-pulse">
               <Loader2 className="w-6 h-6 animate-spin mb-2 text-orange-500" />
               <span className="text-xs font-mono uppercase tracking-wider">Scanning Data...</span>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-40 text-red-400 font-mono text-xs uppercase p-4 text-center">
+              <span className="mb-2 font-bold">Error Loading Data</span>
+              <span className="text-stone-500">{error}</span>
+              <button
+                onClick={() => fetchData(1, false)}
+                className="mt-4 px-3 py-1 bg-stone-800 hover:bg-stone-700 text-stone-300 rounded border border-stone-600 transition-colors"
+              >
+                Retry
+              </button>
             </div>
           ) : data.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-stone-600 font-mono text-xs uppercase">
@@ -152,19 +176,19 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
                   <div className="flex flex-col flex-1 min-w-0 justify-center">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 min-w-0">
-                         <span className="text-xs font-bold text-stone-300 truncate group-hover:text-orange-400 transition-colors">
-                           {user.name}
-                         </span>
-                         
-                         {/* [新增] 互相关注标记 */}
-                         {user.isMutual && (
-                           <div className="flex-none flex items-center gap-1 bg-stone-800/80 px-1.5 py-0.5 rounded border border-stone-600/50" title="Mutually Following">
-                             <ArrowLeftRight className="w-2.5 h-2.5 text-green-400" />
-                             <span className="text-[8px] text-stone-400 font-mono uppercase leading-none">Mutual</span>
-                           </div>
-                         )}
+                        <span className="text-xs font-bold text-stone-300 truncate group-hover:text-orange-400 transition-colors">
+                          {user.name}
+                        </span>
+
+                        {/* [新增] 互相关注标记 */}
+                        {user.isMutual && (
+                          <div className="flex-none flex items-center gap-1 bg-stone-800/80 px-1.5 py-0.5 rounded border border-stone-600/50" title="Mutually Following">
+                            <ArrowLeftRight className="w-2.5 h-2.5 text-green-400" />
+                            <span className="text-[8px] text-stone-400 font-mono uppercase leading-none">Mutual</span>
+                          </div>
+                        )}
                       </div>
-                      
+
                       {/* Jump Icon Hint */}
                       <ArrowRight className="flex-none w-3 h-3 text-stone-600 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
                     </div>
@@ -175,8 +199,8 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
                           LV.{user.level}
                         </span>
                         <span className="text-yellow-600 flex items-center gap-1 text-[10px]">
-                          <Coins className="w-3 h-3" /> 
-                          {user.gold > 1000 ? `${(user.gold/1000).toFixed(1)}k` : user.gold}
+                          <Coins className="w-3 h-3" />
+                          {user.gold > 1000 ? `${(user.gold / 1000).toFixed(1)}k` : user.gold}
                         </span>
                       </div>
                     </div>
@@ -187,7 +211,7 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
               {/* Load More Button */}
               {hasMore && (
                 <div className="p-4 flex justify-center">
-                  <button 
+                  <button
                     onClick={handleLoadMore}
                     disabled={isLoadingMore}
                     className="
@@ -206,7 +230,7 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
                   </button>
                 </div>
               )}
-              
+
               {!hasMore && data.length > 0 && (
                 <div className="py-4 text-center text-[10px] text-stone-700 font-mono">
                   // END OF LIST //

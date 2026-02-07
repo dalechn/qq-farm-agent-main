@@ -292,22 +292,22 @@ export function FarmViewport({
 
                     <div className="flex items-center gap-3 text-[10px] text-stone-400 bg-stone-900/50 px-2 py-0.5 border border-stone-800 font-mono whitespace-nowrap">
                       <button
-                        // onClick={() => {
-                        //   setUserListSidebarType('following');
-                        //   setUserListPlayerId(selectedPlayer.id);
-                        //   setIsUserListSidebarOpen(true);
-                        // }}
+                        onClick={() => {
+                          setUserListSidebarType('following');
+                          setUserListPlayerId(selectedPlayer.id);
+                          setIsUserListSidebarOpen(true);
+                        }}
                         className="hover:text-orange-400 transition-colors"
                       >
                         <span className="text-white font-bold">{selectedPlayer._count?.following || 0}</span> <span className="text-[8px] uppercase">{t('viewport.following')}</span>
                       </button>
                       <span className="w-px h-2 bg-stone-700"></span>
                       <button
-                        // onClick={() => {
-                        //   setUserListSidebarType('followers');
-                        //   setUserListPlayerId(selectedPlayer.id);
-                        //   setIsUserListSidebarOpen(true);
-                        // }}
+                        onClick={() => {
+                          setUserListSidebarType('followers');
+                          setUserListPlayerId(selectedPlayer.id);
+                          setIsUserListSidebarOpen(true);
+                        }}
                         className="hover:text-orange-400 transition-colors"
                       >
                         <span className="text-white font-bold">{selectedPlayer._count?.followers || 0}</span> <span className="text-[8px] uppercase">{t('viewport.followers')}</span>

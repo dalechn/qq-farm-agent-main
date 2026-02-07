@@ -3,9 +3,7 @@
 import prisma from '../utils/prisma';
 import {
   redisClient,
-  KEYS,
   SOCIAL_KEYS,
-  parseRedisHash
 } from '../utils/redis';
 import { SOCIAL_SCRIPTS } from '../utils/social-scripts'; // [修改] 引用新文件
 
@@ -166,61 +164,66 @@ export class FollowService {
   private static async enrichUsers(targetIds: string[], currentUserId: string, forceMutual = false) {
     if (targetIds.length === 0) return [];
 
-    const enrichedData: any[] = new Array(targetIds.length).fill(null);
-    const missingIndices: number[] = [];
-    const missingIds: string[] = [];
-
-    // 1. Redis Cache 批量读取
-    const pipeline = redisClient.multi();
-    targetIds.forEach(id => pipeline.hGetAll(KEYS.PLAYER(id)));
-    const redisResults = await pipeline.exec();
-
-    redisResults?.forEach((res: any, index) => {
-      if (res && res.name) {
-        const player = parseRedisHash<any>(res);
-        enrichedData[index] = {
-          id: targetIds[index],
-          name: player.name,
-          avatar: player.avatar,
-          level: Number(player.level || 1)
-        };
-      } else {
-        missingIndices.push(index);
-        missingIds.push(targetIds[index]);
+    // 1. [修改] 直接从数据库批量查询基础信息
+    // 不需要再去查 Redis 的 KEYS.PLAYER(id)，因为那是游戏服的数据
+    const users = await prisma.player.findMany({
+      where: {
+        id: { in: targetIds }
+      },
+      select: {
+        id: true,
+        name: true,
+        avatar: true,
+        level: true,
+        gold: true, // [新增/修改]
       }
     });
 
-    // 2. 数据库回源 (只查 Redis 缺失的)
-    if (missingIds.length > 0) {
-      const dbUsers = await prisma.player.findMany({
-        where: { id: { in: missingIds } },
-        select: { id: true, name: true, avatar: true, level: true }
-      });
-
-      dbUsers.forEach(user => {
-        for (const originalIndex of missingIndices) {
-          if (targetIds[originalIndex] === user.id) {
-            enrichedData[originalIndex] = user;
-            break;
-          }
-        }
-      });
-    }
+    // 2. 保持顺序 (数据库返回的顺序可能和 targetIds 不一致)
+    const userMap = new Map(users.map(u => [u.id, u]));
 
     // 3. 互粉状态检查
     const myFollowingKey = `${SOCIAL_KEYS.FOLLOWING}${currentUserId}`;
-    const result = await Promise.all(enrichedData.map(async (user, index) => {
-      if (!user) return null;
+
+    // 如果需要检查互粉，批量查一次 Redis ZScore (这个是社交服自己的数据，可以查)
+    const pipeline = redisClient.multi();
+    if (!forceMutual) {
+      targetIds.forEach(tid => {
+        pipeline.zScore(myFollowingKey, tid);
+      });
+    }
+
+    const mutualResults = !forceMutual ? await pipeline.exec() : [];
+
+    // [新增] 临时类型定义，解决环境推断问题
+    type EnrichedUser = {
+      id: string;
+      name: string;
+      avatar: string;
+      level: number;
+      gold: number;
+    };
+
+    const result = targetIds.map((tid, index) => {
+      const user = userMap.get(tid) as EnrichedUser | undefined;
+      if (!user) return null; // 极少数情况：Redis里有关注记录但DB里用户被删了
 
       let isMutual = forceMutual;
-      if (!forceMutual) {
-        const tid = targetIds[index];
-        const score = await redisClient.zScore(myFollowingKey, tid);
+      if (!forceMutual && mutualResults) {
+        // redis 管道返回的结果，非 null 代表关注了
+        const score = mutualResults[index];
         isMutual = score !== null;
       }
 
-      return { ...user, isMutual };
-    }));
+      return {
+        id: user.id,
+        name: user.name,
+        avatar: user.avatar,
+        level: user.level,
+        gold: user.gold, // [新增]
+        isMutual
+      };
+    });
 
     return result.filter(u => u !== null);
   }

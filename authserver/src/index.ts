@@ -4,7 +4,6 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import prisma from './utils/prisma';
-import { GAME_CONFIG, LandStatus } from './utils/game-keys'; // [修改] 引入 LandStatus
 import { connectRedis } from './utils/redis';
 import socialRoutes from './api/social';
 import playerRoutes from './api/players';
@@ -25,7 +24,6 @@ app.post('/api/auth/player', async (req: any, res: any) => {
     return res.status(400).json({ error: 'Name is required' });
   }
 
-  // 检查名字是否已存在 (Prisma 设有 unique 约束，这里先查更友好)
   try {
     const existing = await prisma.player.findUnique({ where: { name } });
     if (existing) {
@@ -34,27 +32,19 @@ app.post('/api/auth/player', async (req: any, res: any) => {
 
     const avatar = `https://robohash.org/${encodeURIComponent(name)}.png?set=set1`;
 
-    // 从配置读取初始土地数量
-    const initialLandCount = GAME_CONFIG.LAND.INITIAL_COUNT;
+    // ❌ [删除] 不再需要在 Auth Server 这里生成初始土地数据
+    // const initialLandCount = GAME_CONFIG.LAND.INITIAL_COUNT;
+    // const initialLands = ...
 
-    // [修复] 针对 JSON 类型的 lands 字段，直接生成数组数据
-    // 不要使用 { create: ... } 这种关系型写法，否则会被当成 JSON 对象存入 DB
-    const initialLands = Array.from({ length: initialLandCount }).map((_, i) => ({
-      position: i,
-      id: i.toString(),
-      status: 'empty', // 明确写入默认值
-      landType: 'normal',
-      stolenCount: 0,
-      remainingHarvests: 0
-    }));
-
+    // ✅ [修改] 直接创建，依赖数据库默认值
     const player = await prisma.player.create({
       data: {
         name,
         avatar,
         twitter,
-        // 直接存入数组
-        lands: initialLands as any
+        // lands: initialLands // ❌ [删除] 这一行
+        // lands 字段会自动使用 schema.prisma 中的 @default("[]")
+        // landCount 字段会自动使用 @default(6)
       }
     });
 

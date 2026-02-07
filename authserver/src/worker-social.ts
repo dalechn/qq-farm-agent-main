@@ -2,7 +2,7 @@
 
 import dotenv from 'dotenv';
 import prisma from './utils/prisma';
-import { redisClient, KEYS, SOCIAL_KEYS } from './utils/redis';
+import { redisClient, SOCIAL_KEYS } from './utils/redis';
 
 dotenv.config();
 

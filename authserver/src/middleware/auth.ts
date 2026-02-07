@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import prisma from '../utils/prisma';
-import redisClient, { updateLeaderboard } from '../utils/redis';
+import redisClient from '../utils/redis';
 
 export const authenticateApiKey = async (req: Request, res: Response, next: NextFunction) => {
   const apiKey = req.header('X-API-KEY');

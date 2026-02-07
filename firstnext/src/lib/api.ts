@@ -40,7 +40,9 @@ async function fetchWithHandling<T>(url: string, options?: RequestInit): Promise
       return { success: false, reason: 'Already stolen by you', suppressed: true } as unknown as T;
     }
 
-    throw new Error(error.error || 'Request failed');
+    // throw new Error(error.error || 'Request failed');
+    console.error("API error:", error);
+    return { success: false, reason: 'Request failed', error } as unknown as T;
   }
 
   return response.json();
@@ -139,6 +141,7 @@ export interface FollowUser {
   name: string;
   level: number;
   gold: number;
+  avatar: string; // [新增]
 }
 
 export interface StealRecord {
