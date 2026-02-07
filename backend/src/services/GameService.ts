@@ -3,7 +3,7 @@
 import { redisClient, KEYS, parseRedisHash, updateLeaderboard } from '../utils/redis';
 import { LUA_SCRIPTS } from '../utils/lua-scripts';
 import prisma from '../utils/prisma';
-import { GAME_CONFIG, CROPS, LandStatus } from '../utils/game-keys';
+import { GAME_CONFIG, CROPS, LandStatus, LandData } from '../utils/game-keys';
 import { broadcast } from '../utils/websocket';
 
 export class GameService {
@@ -51,13 +51,14 @@ export class GameService {
     const playerKey = KEYS.PLAYER(playerId);
     if (await redisClient.exists(playerKey)) return;
 
+    // 1. 查询 DB (不需要 include lands，因为是字段了)
     const player = await prisma.player.findUnique({
-      where: { id: playerId },
-      include: { lands: true }
+      where: { id: playerId }
     });
 
     if (!player) throw new Error('Player not found');
 
+    // 2. 写入玩家基础数据
     const playerData: Record<string, string> = {
       id: player.id,
       name: player.name,
@@ -67,7 +68,7 @@ export class GameService {
       avatar: player.avatar,
       twitter: player.twitter || '',
       createdAt: player.createdAt.toISOString(),
-      landCount: player.lands.length.toString(),
+      landCount: player.landCount.toString(),
       hasDog: player.hasDog ? 'true' : 'false',
       dogActiveUntil: player.dogActiveUntil ? player.dogActiveUntil.getTime().toString() : '0',
       lastDisasterCheck: '0'
@@ -79,26 +80,51 @@ export class GameService {
     await updateLeaderboard('level', player.id, player.level);
     await updateLeaderboard('active', player.id, Date.now());
 
-    for (const land of player.lands) {
-      const landKey = KEYS.LAND(player.id, land.position);
+    // 3. 处理土地数据 (从 JSON 解析)
+    const savedLands = (player.lands as unknown as LandData[]) || [];
+
+    // 初始化 Redis 土地
+    const landCount = player.landCount;
+    for (let i = 0; i < landCount; i++) {
+      const landKey = KEYS.LAND(player.id, i);
+
+      // 尝试从 JSON 中找对应位置的存档
+      const saved = savedLands.find(l => l.position === i);
+
+      // 默认空地数据
       const landData: Record<string, string> = {
-        id: land.id.toString(),
-        dbId: land.id.toString(),
-        position: land.position.toString(),
-        status: land.status || LandStatus.EMPTY,
-        landType: land.landType,
-        cropId: land.cropType || '',
-        matureAt: land.matureAt ? land.matureAt.getTime().toString() : '0',
-        plantedAt: land.plantedAt ? land.plantedAt.getTime().toString() : '0',
-        remainingHarvests: land.remainingHarvests.toString(),
-        stolenCount: land.stolenCount.toString(),
-        hasWeeds: land.hasWeeds ? 'true' : 'false',
-        hasPests: land.hasPests ? 'true' : 'false',
-        needsWater: land.needsWater ? 'true' : 'false'
+        id: i.toString(),
+        position: i.toString(),
+        status: LandStatus.EMPTY,
+        landType: 'normal',
+        cropId: '',
+        remainingHarvests: '0',
+        stolenCount: '0',
+        hasWeeds: 'false',
+        hasPests: 'false',
+        needsWater: 'false',
+        matureAt: '0',
+        plantedAt: '0'
       };
+
+      // 如果有存档，覆盖默认值
+      if (saved) {
+        landData.status = saved.status;
+        landData.landType = saved.landType;
+        landData.cropId = saved.cropType || '';
+        landData.matureAt = saved.matureAt?.toString() || '0';
+        landData.plantedAt = saved.plantedAt?.toString() || '0';
+        landData.remainingHarvests = saved.remainingHarvests.toString();
+        landData.stolenCount = saved.stolenCount.toString();
+        landData.hasWeeds = saved.hasWeeds ? 'true' : 'false';
+        landData.hasPests = saved.hasPests ? 'true' : 'false';
+        landData.needsWater = saved.needsWater ? 'true' : 'false';
+      }
+
       await redisClient.hSet(landKey, landData);
     }
-    await redisClient.expire(playerKey, GAME_CONFIG.REDIS_PLAYER_CACHE_TTL);
+
+    await redisClient.expire(playerKey, GAME_CONFIG.REDIS_PLAYER_CACHE_TTL || 3600);
   }
 
   static async getPlayerState(playerId: string) {
@@ -107,7 +133,9 @@ export class GameService {
 
     const pipeline = redisClient.multi();
     pipeline.hGetAll(KEYS.PLAYER(playerId));
-    for (let i = 0; i < GAME_CONFIG.LAND.MAX_LIMIT; i++) {
+    const landCount = Number(await redisClient.hGet(KEYS.PLAYER(playerId), 'landCount') || 6);
+
+    for (let i = 0; i < landCount; i++) {
       pipeline.hGetAll(KEYS.LAND(playerId, i));
     }
     const results = await pipeline.exec();
@@ -128,7 +156,7 @@ export class GameService {
         const land = parseRedisHash<any>(landRaw);
         lands.push({
           ...land,
-          id: land.id || land.dbId,
+          id: land.position, // 前端使用 position 作为 id
           matureAt: Number(land.matureAt) > 0 ? new Date(Number(land.matureAt)).toISOString() : null,
           plantedAt: Number(land.plantedAt) > 0 ? new Date(Number(land.plantedAt)).toISOString() : null,
           remainingHarvests: Number(land.remainingHarvests || 0),
@@ -144,10 +172,13 @@ export class GameService {
   private static async tryTriggerDisasters(playerId: string) {
     const { PROB_WEED, PROB_PEST, PROB_WATER } = GAME_CONFIG.DISASTER;
     try {
-      const res = await redisClient.eval(LUA_SCRIPTS.TRIGGER_EVENTS, {
-        keys: [KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS],
+      // 获取当前土地上限
+      const landCount = await redisClient.hGet(KEYS.PLAYER(playerId), 'landCount') || '6';
+
+      await redisClient.eval(LUA_SCRIPTS.TRIGGER_EVENTS, {
+        keys: [KEYS.PLAYER(playerId), KEYS.DIRTY_LANDS, KEYS.DIRTY_PLAYERS], // 传入 DIRTY_PLAYERS
         arguments: [
-          GAME_CONFIG.LAND.MAX_LIMIT.toString(),
+          landCount,
           PROB_WEED.toString(),
           PROB_PEST.toString(),
           PROB_WATER.toString(),
@@ -155,7 +186,7 @@ export class GameService {
           GAME_CONFIG.DISASTER_CHECK_INTERVAL.toString()
         ]
       });
-    } catch (e) { }
+    } catch (e) { console.error('Disaster trigger err', e); }
   }
 
   // ==========================================

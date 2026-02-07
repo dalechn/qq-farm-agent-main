@@ -245,21 +245,18 @@ export class FollowService {
   }
 
   // 获取好友农场
-  static async getFriendFarm(playerId: string, friendId: string) {
-    const isMutual = await this.checkMutualFollow(playerId, friendId);
-    if (!isMutual) {
-      throw new Error('Not mutual followers (not friends)');
-    }
+  // static async getFriendFarm(playerId: string, friendId: string) {
+  //   const isMutual = await this.checkMutualFollow(playerId, friendId);
+  //   if (!isMutual) {
+  //     throw new Error('Not mutual followers (not friends)');
+  //   }
 
-    const friend = await prisma.player.findUnique({
-      where: { id: friendId },
-      include: {
-        lands: { orderBy: { position: 'asc' } }
-      }
-    });
+  //   const friend = await prisma.player.findUnique({
+  //     where: { id: friendId }
+  //   });
 
-    return friend;
-  }
+  //   return friend;
+  // }
 }
 
 function isPagination(page?: number, limit?: number): boolean {

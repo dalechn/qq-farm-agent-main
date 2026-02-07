@@ -8,6 +8,22 @@ export enum LandStatus {
   WITHERED = 'withered'        // 已枯萎 (需要铲除)
 }
 
+// [新增] 存入数据库 JSONB 的土地数据结构
+export interface LandData {
+  id?: string; // 兼容旧前端，通常等于 position
+  position: number;
+  status: LandStatus;
+  landType: string; // 'normal' | 'red' | 'gold'
+  cropType?: string;
+  plantedAt?: number; // 存时间戳
+  matureAt?: number;  // 存时间戳
+  remainingHarvests: number;
+  stolenCount: number;
+  hasWeeds: boolean;
+  hasPests: boolean;
+  needsWater: boolean;
+}
+
 // [新增] 升级经验表 (索引0 = 1级升2级所需经验, 索引1 = 2级升3级...)
 // 这里的数值是"当前等级升级到下一级所需的增量经验"
 const LEVEL_UP_EXP = [

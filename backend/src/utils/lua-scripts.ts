@@ -473,41 +473,41 @@ export const LUA_SCRIPTS = {
   TRIGGER_EVENTS: `
     local playerKey = KEYS[1]
     local dirtyLands = KEYS[2]
+    local dirtyPlayers = KEYS[3] -- [新增] 接收 dirtyPlayers key
     
     local maxLands = tonumber(ARGV[1])
     local probWeed = tonumber(ARGV[2])
     local probPest = tonumber(ARGV[3])
     local probWater = tonumber(ARGV[4])
     local now = tonumber(ARGV[5])
-    local checkInterval = tonumber(ARGV[6])
+    local interval = tonumber(ARGV[6])
 
-    -- 检查上次触发时间，防止过于频繁触发
+    -- 1. 检查冷却
     local lastCheck = tonumber(redis.call('HGET', playerKey, 'lastDisasterCheck') or '0')
     if (now - lastCheck) < checkInterval then
-        return 0
+      return 0 
     end
+
     redis.call('HSET', playerKey, 'lastDisasterCheck', now)
 
     local triggeredCount = 0
+    local anyChange = false
+    local playerId = string.match(playerKey, "player:(.+)")
 
     for i = 0, (maxLands - 1) do
-        local landKey = 'game:land:' .. string.match(playerKey, "player:(.+)") .. ':' .. i
+        local landKey = 'game:land:' .. playerId .. ':' .. i
         
-        -- 只有种植中(planted)的土地才会发生灾害
         local status = redis.call('HGET', landKey, 'status')
         if status == 'planted' then
             local changed = false
             
-            -- 读取当前状态
             local hasWeeds = redis.call('HGET', landKey, 'hasWeeds')
             local hasPests = redis.call('HGET', landKey, 'hasPests')
             local needsWater = redis.call('HGET', landKey, 'needsWater')
             
-            -- [新增] 读取种植时间，用于保护期计算
             local plantedAt = tonumber(redis.call('HGET', landKey, 'plantedAt') or '0')
             local matureAt = tonumber(redis.call('HGET', landKey, 'matureAt') or '0')
             
-            -- [可选] 保护期逻辑：生长前 20% 时间不发生灾害
             local totalTime = matureAt - plantedAt
             local passedTime = now - plantedAt
             local isProtected = false
@@ -516,7 +516,6 @@ export const LUA_SCRIPTS = {
             end
 
             if not isProtected then
-                -- [核心修复] 只有当前不是 true 时，才执行设置
                 if hasWeeds ~= 'true' and probWeed > 0 and math.random(1, 100) <= probWeed then
                    redis.call('HSET', landKey, 'hasWeeds', 'true')
                    changed = true
@@ -533,13 +532,18 @@ export const LUA_SCRIPTS = {
                 end
             end
 
-            -- 只有真正发生变化(changed=true)时，才加入脏集合
             if changed then
                 redis.call('SADD', dirtyLands, landKey)
                 triggeredCount = triggeredCount + 1
+                anyChange = true
             end
         end
     end
+
+    if anyChange then
+        redis.call('SADD', dirtyPlayers, playerKey)
+    end
+
     return triggeredCount
   `,
 };

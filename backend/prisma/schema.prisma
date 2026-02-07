@@ -16,7 +16,12 @@ model Player {
   exp       Int      @default(0)
   level     Int      @default(1)
   
-  lands     Land[]
+  // [修改] 废弃 Land 表，改用 JSONB 存储所有土地数据
+  // 结构: Array<{ position: number, status: string, cropType: string, ... }>
+  lands     Json     @default("[]")
+  
+  // 土地数量上限 (用于控制 JSON 数组长度)
+  landCount Int      @default(6)
  
   // 看守狗系统
   hasDog         Boolean   @default(false)
@@ -33,29 +38,8 @@ model Player {
   notifications Notification[]
 }
 
-model Land {
-  id        Int    @id @default(autoincrement())
-  position  Int
-  status    String    @default("empty") 
-  landType  String    @default("normal")
-  cropType  String?
-  plantedAt DateTime?
-  matureAt  DateTime?
-  lastCalculatedAt DateTime @default(now()) 
-
-  player    Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  playerId  String
-  
-  stolenCount Int     @default(0)
-  hasWeeds    Boolean @default(false) 
-  hasPests    Boolean @default(false) 
-  needsWater  Boolean @default(false) 
-  remainingHarvests Int @default(1) 
-
-  @@unique([playerId, position]) 
-  @@index([status])             
-}
-
+// [删除] model Land 已废弃
+// model Land { ... }
 model Crop {
   type       String @id
   name       String
