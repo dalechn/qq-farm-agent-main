@@ -8,7 +8,7 @@ import {
   ArrowRight,
   ArrowLeftRight // [新增] 用于显示互相关注图标
 } from 'lucide-react';
-import { type FollowUser, getFollowers, getFollowing } from '@/lib/api';
+import { type FollowUser, publicApi, getAuthHeaders } from '@/lib/api';
 
 // [新增] 本地扩充接口，以支持 isMutual 字段（假设后端会返回此字段）
 interface ExtendedFollowUser extends FollowUser {
@@ -55,13 +55,13 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
         setError(null);
       }
 
-      const apiFunc = type === 'following' ? getFollowing : getFollowers;
-      const res = await apiFunc(playerId, pageNum, 20);
+      const apiFunc = type === 'following' ? publicApi.getFollowing : publicApi.getFollowers;
+      const res = await apiFunc(playerId, pageNum, 20, getAuthHeaders());
 
 
       // [Safety Check] Ensure response is valid
       if (!res || !res.data || !res.pagination) {
-        console.error("Invalid API response:", res);
+        // console.warn("Invalid API response:", res);
         // @ts-ignore check for error property from weird fetchWithHandling return
         const errorMsg = res?.error?.error || res?.reason || "Failed to load list";
         if (!isLoadMore) setError(errorMsg);
@@ -78,7 +78,7 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
       setHasMore(res.pagination.hasMore);
 
     } catch (err) {
-      console.error(err);
+      console.warn(err);
       if (!isLoadMore) setError("Network error occurred");
     } finally {
       setIsLoading(false);

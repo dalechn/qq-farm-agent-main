@@ -111,49 +111,44 @@ export function DebugSidebar({ isOpen, onClose, currentPlayerId }: DebugSidebarP
     // 玩家
     createPlayer: () => handleApiCall('Create Player', () => api.publicApi.createPlayer(playerName)),
     getMe: () => handleApiCall('Get Me (By Token)', async () => {
-      // 使用 api.ts 里的 createAgentApi 或者手动 fetch
-      // 为了确保能拿到最新状态，这里直接调后端
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/me`, {
-        headers: { 'X-API-KEY': apiKey }
-      });
-      if (!res.ok) throw new Error("Failed to fetch /me");
+      // 使用 publicApi.getMe 并传入当前的 apiKey
+      const data = await api.publicApi.getMe(apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders());
 
-      const data = await res.json();
       // [新增] 获取成功后自动更新 input 里的名字，方便直接跳转
       if (data.name) setPlayerName(data.name);
       return data;
     }),
 
     // 种植
-    plant: () => handleApiCall(`Plant (${cropType} @ ${position})`, () => api.plant(Number(position), cropType)),
-    harvest: () => handleApiCall(`Harvest (@ ${position})`, () => api.harvest(Number(position))),
-    shovel: () => handleApiCall(`Shovel (@ ${position})`, () => api.shovelLand(Number(position))),
+    plant: () => handleApiCall(`Plant (${cropType} @ ${position})`, () => api.publicApi.plant(Number(position), cropType, apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    harvest: () => handleApiCall(`Harvest (@ ${position})`, () => api.publicApi.harvest(Number(position), apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    shovel: () => handleApiCall(`Shovel (@ ${position})`, () => api.publicApi.shovelLand(Number(position), undefined, apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
 
     // 照料
     // [修改] 照料：如果有 currentPlayerId (访客模式)，传给 targetId
-    water: () => handleApiCall(`Water`, () => api.careLand(Number(position), 'water', currentPlayerId)),
-    weed: () => handleApiCall(`Weed`, () => api.careLand(Number(position), 'weed', currentPlayerId)),
-    pest: () => handleApiCall(`Pest`, () => api.careLand(Number(position), 'pest', currentPlayerId)),
+    water: () => handleApiCall(`Water`, () => api.publicApi.careLand(Number(position), 'water', currentPlayerId, apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    weed: () => handleApiCall(`Weed`, () => api.publicApi.careLand(Number(position), 'weed', currentPlayerId, apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    pest: () => handleApiCall(`Pest`, () => api.publicApi.careLand(Number(position), 'pest', currentPlayerId, apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
 
     // [新增] 偷菜
     steal: () => {
       if (!currentPlayerId) return addLog('Steal', 'No target player selected', 'error');
-      handleApiCall(`Steal`, () => api.steal(currentPlayerId, Number(position)));
+      handleApiCall(`Steal`, () => api.publicApi.steal(currentPlayerId, Number(position), apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders()));
     },
 
     // 道具/升级
-    expand: () => handleApiCall('Expand Land', () => api.expandLand()),
-    upgrade: () => handleApiCall(`Upgrade Land (@ ${position})`, () => api.upgradeLand(Number(position))),
-    fertilizerNormal: () => handleApiCall(`Fertilizer Normal (@ ${position})`, () => api.useFertilizer(Number(position), 'normal')),
-    fertilizerHigh: () => handleApiCall(`Fertilizer High (@ ${position})`, () => api.useFertilizer(Number(position), 'high')),
+    expand: () => handleApiCall('Expand Land', () => api.publicApi.expandLand(apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    upgrade: () => handleApiCall(`Upgrade Land (@ ${position})`, () => api.publicApi.upgradeLand(Number(position), apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    fertilizerNormal: () => handleApiCall(`Fertilizer Normal (@ ${position})`, () => api.publicApi.useFertilizer(Number(position), 'normal', apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    fertilizerHigh: () => handleApiCall(`Fertilizer High (@ ${position})`, () => api.publicApi.useFertilizer(Number(position), 'high', apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
 
     // [新增] 狗
-    buyDog: () => handleApiCall('Buy Dog', () => api.buyDog()),
-    feedDog: () => handleApiCall('Feed Dog', () => api.feedDog()),
+    buyDog: () => handleApiCall('Buy Dog', () => api.publicApi.buyDog(apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    feedDog: () => handleApiCall('Feed Dog', () => api.publicApi.feedDog(apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
 
     // [新增] 社交
-    getFollowers: () => handleApiCall('Get Followers', () => api.getFollowers(currentPlayerId || '')),
-    getFollowing: () => handleApiCall('Get Following', () => api.getFollowing(currentPlayerId || '')),
+    getFollowers: () => handleApiCall('Get Followers', () => api.publicApi.getFollowers(currentPlayerId || '', 1, 20, apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    getFollowing: () => handleApiCall('Get Following', () => api.publicApi.getFollowing(currentPlayerId || '', 1, 20, apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
 
     // 自定义
     customRequest: async () => {

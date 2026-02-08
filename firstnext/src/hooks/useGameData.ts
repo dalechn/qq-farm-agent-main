@@ -1,7 +1,7 @@
 // src/hooks/useGameData.ts
 
 import { useState, useEffect, useCallback } from 'react';
-import { publicApi, getMe, Player, Crop, ActionLog, ShopData } from '@/lib/api';
+import { publicApi, type Player, type Crop, type ActionLog, type ShopData } from '@/lib/api';
 // import { useWebSocket, WebSocketMessage } from './useWebSocket';
 
 interface UseGameDataOptions {
@@ -115,7 +115,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
       setShopData(data);
       setCrops(data.crops);
     } catch (err: any) {
-      console.error('Failed to fetch crops:', err);
+      console.warn('Failed to fetch crops:', err);
     }
   }, []);
 
@@ -135,7 +135,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
       }
       setHasMoreLogs(response.pagination.hasMore);
     } catch (err: any) {
-      console.error('Failed to fetch logs:', err);
+      console.warn('Failed to fetch logs:', err);
     } finally {
       setIsFetchingMoreLogs(false);
     }
@@ -151,10 +151,10 @@ export function useGameData(options: UseGameDataOptions = {}) {
   const fetchMe = useCallback(async () => {
     if (typeof window !== 'undefined' && localStorage.getItem('player_key')) {
       try {
-        const me = await getMe();
+        const me = await publicApi.getMe();
         setMyPlayer(me);
       } catch (e) {
-        console.error("Failed to fetch my info (invalid key?)", e);
+        console.warn("Failed to fetch my info (invalid key?)", e);
       }
     }
   }, []);

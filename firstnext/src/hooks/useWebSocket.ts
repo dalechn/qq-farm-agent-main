@@ -35,7 +35,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     // 修改：移除 if (!apiKey) return; 的限制
     // 如果有 apiKey 就拼上去，没有就作为游客连接
     const url = apiKey ? `${WS_BASE}?apiKey=${apiKey}` : WS_BASE;
-    
+
     console.log('🔌 Connecting to WebSocket:', url); // Debug log
 
     const ws = new WebSocket(url);
@@ -53,7 +53,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
         setLastMessage(message);
         onMessage?.(message);
       } catch (error) {
-        console.error('Failed to parse WebSocket message:', error);
+        console.warn('Failed to parse WebSocket message:', error);
       }
     };
 
@@ -72,7 +72,7 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.warn('WebSocket error:', error);
     };
 
     wsRef.current = ws;
@@ -81,13 +81,13 @@ export function useWebSocket(options: UseWebSocketOptions = {}) {
   // ... 保持 disconnect 和 send 不变 ...
   const disconnect = useCallback(() => {
     if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-        reconnectTimeoutRef.current = null;
-      }
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
-      }
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
   }, []);
 
   const send = useCallback((message: object) => {

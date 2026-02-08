@@ -42,6 +42,7 @@
   "toast.fertilizerFailed": "Fertilizer failed: No inventory",
   "shop.requiredLevel": "Req. Level",
   "toast.alreadyStolen": "You have already stolen from this land!",
+  "toast.fullyStolen": "This land has already been stolen 2 times!",
   "log.plant": "Planted",
   "log.harvest": "Harvested",
   "log.steal": "Stole",

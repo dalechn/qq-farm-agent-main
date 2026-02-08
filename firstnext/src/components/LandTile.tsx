@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Hand, Skull, Droplets, Bug, Sprout, Shovel, Zap, Lock } from "lucide-react";
-import { Land, plant, harvest, careLand, shovelLand, useFertilizer, steal } from "../lib/api";
+import { Land, publicApi, getAuthHeaders } from "../lib/api";
 import { useToast } from "./ui/Toast";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -96,10 +96,10 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       // --- 主人模式 ---
       if (isOwner) {
         if (land.status === 'empty' && selectedCrop) {
-          await plant(land.position, selectedCrop);
+          await publicApi.plant(land.position, selectedCrop, getAuthHeaders());
           onUpdate?.();
         } else if (land.status === 'harvestable' || isMature) {
-          const res = await harvest(land.position);
+          const res = await publicApi.harvest(land.position, getAuthHeaders());
           if (res.healthLoss && res.healthLoss > 0) {
             toast(t('toast.harvestedWithLoss', { crop: cropName, gold: res.gold, loss: res.healthLoss }), 'success');
           } else {
@@ -107,7 +107,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
           }
           onUpdate?.();
         } else if (land.status === 'withered') {
-          await shovelLand(land.position);
+          await publicApi.shovelLand(land.position, undefined, getAuthHeaders());
           onUpdate?.();
         }
       }
@@ -115,7 +115,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       else if (ownerId) {
         if (land.status === 'harvestable' || isMature) {
           // 偷菜
-          const res = await steal(ownerId, land.position);
+          const res = await publicApi.steal(ownerId, land.position, getAuthHeaders());
           if (res.success) {
             toast(t('toast.stolen', { amount: res.stolen.amount, crop: res.stolen.cropName }), 'steal');
             onUpdate?.();
@@ -128,6 +128,8 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
             toast(t('toast.dailyLimitReached', { current, limit }), 'error');
           } else if (res.reason === 'Already stolen by you') {
             toast(t('toast.alreadyStolen'), 'error');
+          } else if (res.reason === 'Already fully stolen') {
+            toast(t('toast.fullyStolen'), 'error');
           } else {
             toast(res.reason || t('toast.actionFailed'), 'error');
           }
@@ -138,7 +140,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
       }
 
     } catch (error: any) {
-      console.error('Action failed:', error);
+      console.warn('Action failed:', error);
       toast(error.message || t('toast.actionFailed'), 'error');
     } finally {
       setLoading(false);
@@ -151,10 +153,10 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
     try {
       setLoading(true);
       // 如果不是主人，传入 targetId (ownerId)
-      await careLand(land.position, type, isOwner ? undefined : ownerId);
+      await publicApi.careLand(land.position, type, isOwner ? undefined : ownerId, getAuthHeaders());
       onUpdate?.();
     } catch (error: any) {
-      console.error('Care failed:', error);
+      console.warn('Care failed:', error);
       toast(error.message || t('toast.careFailed'), 'error');
     } finally {
       setLoading(false);
@@ -168,10 +170,10 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
     try {
       setLoading(true);
       // 如果是访客，传入 targetId (ownerId)
-      await shovelLand(land.position, isOwner ? undefined : ownerId);
+      await publicApi.shovelLand(land.position, isOwner ? undefined : ownerId, getAuthHeaders());
       onUpdate?.(); // 铲除成功 -> 刷新
     } catch (error: any) {
-      console.error('Shovel failed:', error);
+      console.warn('Shovel failed:', error);
       toast(error.message || t('toast.shovelFailed'), 'error');
     } finally {
       setLoading(false);
@@ -184,10 +186,10 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
     if (loading) return;
     try {
       setLoading(true);
-      await useFertilizer(land.position, 'normal');
+      await publicApi.useFertilizer(land.position, 'normal', getAuthHeaders());
       onUpdate?.(); // 施肥成功 -> 刷新
     } catch (error) {
-      console.error('Fertilizer failed:', error);
+      console.warn('Fertilizer failed:', error);
       toast(t('toast.fertilizerFailed'), 'error');
     } finally {
       setLoading(false);

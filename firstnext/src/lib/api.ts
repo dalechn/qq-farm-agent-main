@@ -33,23 +33,23 @@ async function fetchWithHandling<T>(url: string, options?: RequestInit): Promise
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
 
     // [修复] 特殊处理 "Already stolen by you"，避免抛出异常导致 Next.js 报错
-    if (error.error === 'Already stolen by you') {
-      // 这里的类型 T 需要包含我们手动构造的结构，或者使用 unknown 断言
-      // 我们约定返回一个带 reason 字段的对象，让调用方 check
-      console.warn("API suppressed error: Already stolen by you");
-      return { success: false, reason: 'Already stolen by you', suppressed: true } as unknown as T;
-    }
+    // if (error.error === 'Already stolen by you') {
+    //   // 这里的类型 T 需要包含我们手动构造的结构，或者使用 unknown 断言
+    //   // 我们约定返回一个带 reason 字段的对象，让调用方 check
+    //   console.warn("API suppressed error: Already stolen by you");
+    //   return { success: false, reason: 'Already stolen by you', suppressed: true } as unknown as T;
+    // }
 
     // throw new Error(error.error || 'Request failed');
-    console.error("API error:", error);
-    return { success: false, reason: 'Request failed', error } as unknown as T;
+    // console.warn("API error:", error);
+    return { success: false, reason: error.error || 'Request failed', error } as unknown as T;
   }
 
   return response.json();
 }
 
 // 获取本地存储的 API Key 辅助函数
-const getAuthHeaders = (): Record<string, string> => {
+export const getAuthHeaders = (): Record<string, string> => {
   const apiKey = typeof window !== 'undefined' ? localStorage.getItem('player_key') : '';
   return apiKey ? { 'X-API-KEY': apiKey } : {};
 };
@@ -198,116 +198,6 @@ export interface PaginatedFollows {
   };
 }
 
-// ==================== 交互操作 API (自动携带 Auth) ====================
-
-export const plant = async (position: number, cropType: string) => {
-  return request<{ success: boolean }>('/plant', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ position, cropType }),
-  });
-};
-
-export const harvest = async (position: number) => {
-  return request<{ success: boolean; gold: number; exp: number; healthLoss?: number }>('/harvest', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ position }),
-  });
-};
-
-export const careLand = async (position: number, type: 'water' | 'weed' | 'pest', targetId?: string) => {
-  return request<{ success: boolean; exp: number }>('/care', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ position, type, targetId }),
-  });
-};
-
-// [新增] 偷菜 API (以前只在 AgentApi 里)
-export const steal = async (victimId: string, position: number) => {
-  return request<{
-    success: boolean;
-    stolen: { cropType: string; cropName: string; amount: number; goldValue: number };
-    reason?: string;
-    penalty?: number;
-  }>('/steal', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ victimId, position }),
-  });
-};
-
-export const shovelLand = async (position: number, targetId?: string) => {
-  return request<{ success: boolean; exp: number }>('/shovel', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ position, targetId }),
-  });
-};
-
-// [修复] 路径: /land/expand -> /expand
-export const expandLand = async () => {
-  return request<{ success: boolean; newPosition: number; cost: number }>('/expand', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-  });
-};
-
-// [修复] 路径: /land/upgrade -> /upgrade-land
-export const upgradeLand = async (position: number) => {
-  return request<{ success: boolean }>('/upgrade-land', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ position }),
-  });
-};
-
-// [修复] 路径: /item/fertilizer -> /fertilize
-export const useFertilizer = async (position: number, type: 'normal' | 'high') => {
-  return request<{ success: boolean; newMatureAt: string }>('/fertilize', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-    body: JSON.stringify({ position, type }),
-  });
-};
-
-// [新增] 狗相关 API
-export const buyDog = async () => {
-  return request<{ success: boolean; message?: string }>('/dog/buy', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-  });
-};
-
-export const feedDog = async () => {
-  return request<{ success: boolean; message?: string }>('/dog/feed', {
-    method: 'POST',
-    headers: getAuthHeaders(),
-  });
-};
-
-// [新增] 社交相关 API (Top-level) - 指向 Auth Server
-// 获取指定用户的关注列表 (公开, 支持分页)
-export const getFollowing = async (userId: string, page = 1, limit = 20) => {
-  return requestAuth<PaginatedFollows>(`/following?userId=${userId}&page=${page}&limit=${limit}`);
-};
-
-// 获取指定用户的粉丝列表 (公开, 支持分页)
-export const getFollowers = async (userId: string, page = 1, limit = 20) => {
-  return requestAuth<PaginatedFollows>(`/followers?userId=${userId}&page=${page}&limit=${limit}`);
-};
-
-
-// ==================== 公开/系统 API ====================
-
-// [新增] 获取当前登录用户信息 (用于判断是否是主人)
-export const getMe = async () => {
-  return request<Player>('/me', {
-    headers: getAuthHeaders(),
-  });
-};
-
 export const publicApi = {
   getPlayerByName: (name: string) =>
     request<Player>(`/users/${encodeURIComponent(name)}`),
@@ -315,11 +205,9 @@ export const publicApi = {
   // getLeaderboard: (page = 1, limit = 20) =>
   //   request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
 
-  // [修改] 支持 sort 参数
   getLeaderboard: (page = 1, limit = 20, sort: 'gold' | 'active' | 'level' = 'gold') =>
     request<PaginatedPlayers>(`/leaderboard?page=${page}&limit=${limit}&sort=${sort}`),
 
-  // [修改] Logs 指向 Game Server
   getLogs: (playerId?: string, page = 1, limit = 50) =>
     request<PaginatedLogs>(
       playerId
@@ -329,63 +217,147 @@ export const publicApi = {
 
   getCrops: () => request<ShopData>('/crops'),
 
+
+  // [Moved] 获取当前登录用户信息
+  getMe: async (headers = getAuthHeaders()) => {
+    return request<Player>('/me', { headers });
+  },
+
+  // --- Game Actions ---
+
+  plant: async (position: number, cropType: string, headers = getAuthHeaders()) => {
+    return request<{ success: boolean }>('/plant', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ position, cropType }),
+    });
+  },
+
+  harvest: async (position: number, headers = getAuthHeaders()) => {
+    return request<{ success: boolean; gold: number; exp: number; healthLoss?: number }>('/harvest', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ position }),
+    });
+  },
+
+  careLand: async (position: number, type: 'water' | 'weed' | 'pest', targetId?: string, headers = getAuthHeaders()) => {
+    return request<{ success: boolean; exp: number }>('/care', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ position, type, targetId }),
+    });
+  },
+
+  steal: async (victimId: string, position: number, headers = getAuthHeaders()) => {
+    return request<{
+      success: boolean;
+      stolen: { cropType: string; cropName: string; amount: number; goldValue: number };
+      reason?: string;
+      penalty?: number;
+    }>('/steal', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ victimId, position }),
+    });
+  },
+
+  shovelLand: async (position: number, targetId?: string, headers = getAuthHeaders()) => {
+    return request<{ success: boolean; exp: number }>('/shovel', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ position, targetId }),
+    });
+  },
+
+  expandLand: async (headers = getAuthHeaders()) => {
+    return request<{ success: boolean; newPosition: number; cost: number }>('/expand', {
+      method: 'POST',
+      headers,
+    });
+  },
+
+  upgradeLand: async (position: number, headers = getAuthHeaders()) => {
+    return request<{ success: boolean }>('/upgrade-land', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ position }),
+    });
+  },
+
+  useFertilizer: async (position: number, type: 'normal' | 'high', headers = getAuthHeaders()) => {
+    return request<{ success: boolean; newMatureAt: string }>('/fertilize', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ position, type }),
+    });
+  },
+
+  buyDog: async (headers = getAuthHeaders()) => {
+    return request<{ success: boolean; message?: string }>('/dog/buy', {
+      method: 'POST',
+      headers,
+    });
+  },
+
+  feedDog: async (headers = getAuthHeaders()) => {
+    return request<{ success: boolean; message?: string }>('/dog/feed', {
+      method: 'POST',
+      headers,
+    });
+  },
+
+  // --- Social Actions ---
+
+  getFollowing: async (userId: string, page = 1, limit = 20, headers = getAuthHeaders()) => {
+    return requestAuth<PaginatedFollows>(`/following?userId=${userId}&page=${page}&limit=${limit}`, { headers });
+  },
+
+  getFollowers: async (userId: string, page = 1, limit = 20, headers = getAuthHeaders()) => {
+    return requestAuth<PaginatedFollows>(`/followers?userId=${userId}&page=${page}&limit=${limit}`, { headers });
+  },
+
+  // --- Notification Actions ---
+  getNotifications: async (headers = getAuthHeaders()) => {
+    return requestAuth<Notification[]>('/notifications', { headers });
+  },
+
+  markNotificationsRead: async (ids: number[], headers = getAuthHeaders()) => {
+    return requestAuth<{ success: boolean }>('/notifications/read', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ids }),
+    });
+  },
+
+  // --- Other Social Actions ---
+  follow: async (targetId: string, headers = getAuthHeaders()) => {
+    return requestAuth<{ success: boolean; isMutual: boolean }>('/follow', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ targetId }),
+    });
+  },
+
+  unfollow: async (targetId: string, headers = getAuthHeaders()) => {
+    return requestAuth<{ success: boolean }>('/unfollow', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ targetId }),
+    });
+  },
+
+  getFriends: async (headers = getAuthHeaders()) => {
+    return requestAuth<FollowUser[]>('/friends', { headers });
+  },
+
   createPlayer: async (name: string) => {
-    // 这里的 AUTH_BASE 已经包含 /api/auth，所以路径修正为 /player
-    // 注意：auth-server 定义是 app.post('/api/auth/player', ...)
-    // 如果 AUTH_BASE = .../api/auth，则 requestAuth('/player') => .../api/auth/player
     return requestAuth('/player', {
       method: 'POST',
       body: JSON.stringify({ name }),
     });
   },
+  // getFriendFarm: async (friendId: string, headers = getAuthHeaders()) => {
+  //   return request<Player>(`/friends/${friendId}/farm`, { headers });
+  // },
 };
-
-// ==================== Agent API (旧版兼容/完整实例) ====================
-
-export function createAgentApi(apiKey: string) {
-  const headers = { 'X-API-KEY': apiKey };
-
-  return {
-    getMe: () => request<Player>('/me', { headers }),
-    getNotifications: () => requestAuth<Notification[]>('/notifications', { headers }),
-    markNotificationsRead: (ids: number[]) =>
-      requestAuth<{ success: boolean }>('/notifications/read', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ ids }),
-      }),
-    follow: (targetId: string) =>
-      requestAuth<{ success: boolean; isMutual: boolean }>('/follow', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ targetId }),
-      }),
-    unfollow: (targetId: string) =>
-      requestAuth<{ success: boolean }>('/unfollow', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ targetId }),
-      }),
-    // [修改] 支持分页
-    getFollowing: (page = 1, limit = 20) =>
-      requestAuth<PaginatedFollows>(`/following?page=${page}&limit=${limit}`, { headers }),
-    getFollowers: (page = 1, limit = 20) =>
-      requestAuth<PaginatedFollows>(`/followers?page=${page}&limit=${limit}`, { headers }),
-
-    getFriends: () => requestAuth<FollowUser[]>('/friends', { headers }),
-
-    // 农场数据仍在 Game Server
-    getFriendFarm: (friendId: string) =>
-      request<Player>(`/friends/${friendId}/farm`, { headers }), // 注意：后端可能需要适配路由，或者这个接口如果已废弃
-
-    steal: (victimId: string, position: number) =>
-      request<{
-        success: boolean;
-        stolen: { cropType: string; cropName: string; amount: number; goldValue: number };
-      }>('/steal', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ victimId, position }),
-      }),
-  };
-}

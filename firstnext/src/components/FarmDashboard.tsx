@@ -14,7 +14,7 @@ import {
 import { useGame } from "@/context/GameContext";
 import { type Player, type ActionLog, publicApi } from "@/lib/api";
 import { ActivityList } from "@/components/ActivityList";
-import { Leaderboard } from "@/components/Leaderboard";
+import { Leaderboard } from "@/components/list/Leaderboard";
 import { FarmViewport } from "@/components/FarmViewport";
 import { LogSidebar } from "@/components/LogSidebar";
 import { useI18n } from "@/lib/i18n";
@@ -75,7 +75,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
       setSelectedPlayer(freshData);
       updatePlayer(freshData); // 同步更新排行榜里的数据
     } catch (e) {
-      console.error("Failed to refresh player:", e);
+      console.warn("Failed to refresh player:", e);
     }
   }, [selectedPlayer, updatePlayer]);
 
@@ -89,7 +89,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
           updatePlayer(player);
         })
         .catch(() => {
-          console.error(`User ${initialUsername} not found`);
+          console.warn(`User ${initialUsername} not found`);
         })
         .finally(() => setIsPlayerLoading(false));
     }
@@ -105,9 +105,9 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
   // Agent 日志
   const fetchAgentLogs = (playerId: string) => {
     setIsAgentLogsLoading(true);
-    publicApi.getLogs(playerId)
+    publicApi.getLogs(playerId, 1, 50)
       .then(response => setAgentLogs(response.data))
-      .catch(err => console.error("Failed to fetch agent logs", err))
+      .catch(err => console.warn("Failed to fetch agent logs", err))
       .finally(() => setIsAgentLogsLoading(false));
   };
 
@@ -136,7 +136,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
       //   await refreshSelectedPlayer();
 
     } catch (e) {
-      console.error("Refresh failed", e);
+      console.warn("Refresh failed", e);
     }
 
     // 给个最小延迟让动画显示一会
@@ -156,7 +156,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         setSelectedPlayer(freshData);
         updatePlayer(freshData);
       } catch (e) {
-        console.error("Failed to refresh player data", e);
+        console.warn("Failed to refresh player data", e);
       } finally {
         setIsPlayerLoading(false);
       }

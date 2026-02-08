@@ -42,6 +42,7 @@
   "toast.fertilizerFailed": "施肥失败：没有库存",
   "shop.requiredLevel": "需要等级",
   "toast.alreadyStolen": "你已经偷过这块地了！",
+  "toast.fullyStolen": "这块地已经被偷过2次了！",
   "log.plant": "种植了",
   "log.harvest": "收获了",
   "log.steal": "偷了",

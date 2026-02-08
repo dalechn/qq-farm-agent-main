@@ -12,13 +12,13 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type Player, type FollowUser, getFollowers, getFollowing } from "@/lib/api";
+import { type Player, type FollowUser } from "@/lib/api";
 import { LandTile } from "@/components/LandTile";
 import { useState, useEffect } from "react";
 
 import { PatrolDog } from "@/components/PatrolDog";
-import { DebugSidebar } from "@/components/DebugSidebar";
-import { UserListSidebar } from "@/components/UserListSidebar";
+import { DebugSidebar } from "@/components/list/DebugSidebar";
+import { UserListSidebar } from "@/components/list/UserListSidebar";
 import { useGame } from "@/context/GameContext";
 import { useI18n } from "@/lib/i18n";
 
