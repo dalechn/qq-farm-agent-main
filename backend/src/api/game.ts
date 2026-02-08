@@ -14,28 +14,24 @@ const router: Router = Router();
 // ==========================================
 
 // 获取当前玩家状态
+// 1. 获取当前玩家状态
 router.get('/me', authenticateApiKey, async (req: any, res) => {
   try {
     const player = await GameService.getPlayerState(req.playerId);
+    res.json(player);
+  } catch (error: any) {
+    console.error('Get me error:', error.message);
 
-    // 补充 DB 数据
-    const counts = await prisma.player.findUnique({
-      where: { id: req.playerId },
-      select: { _count: { select: { followers: true, following: true } } }
-    });
-
-    if (counts) {
-      (player as any)._count = counts._count;
+    // [修复] 如果数据库里找不到人，返回 404，而不是 500
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ error: 'Player not found' });
     }
 
-    res.json(player); // player 已经包含了 lands 和 gold
-  } catch (error: any) {
-    console.error('Get me error:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// 查看他人主页
+// 2. 查看他人主页
 router.get('/users/:name', async (req, res) => {
   try {
     const name = decodeURIComponent(req.params.name);
@@ -46,25 +42,22 @@ router.get('/users/:name', async (req, res) => {
     });
 
     if (!user) {
+      // 这里的 404 是正常的
       res.status(404).json({ error: 'Player not found' });
       return;
     }
 
     const player = await GameService.getPlayerState(user.id);
-
-    const counts = await prisma.player.findUnique({
-      where: { id: user.id },
-      select: { _count: { select: { followers: true, following: true } } }
-    });
-
-    if (counts) {
-      (player as any)._count = counts._count;
-    }
-
     res.json(player);
 
-  } catch (error) {
-    console.error('Get user error:', error);
+  } catch (error: any) {
+    console.error('Get user error:', error.message);
+
+    // [修复] 同上
+    if (error.message.includes('not found')) {
+      return res.status(404).json({ error: 'Player not found' });
+    }
+
     res.status(500).json({ error: 'Server error' });
   }
 });

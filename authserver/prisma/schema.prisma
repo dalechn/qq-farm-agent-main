@@ -39,20 +39,6 @@ model Player {
   logs      GameLog[]
 }
 
-model Crop {
-  type       String @id
-  name       String
-  seedPrice  Int
-  sellPrice  Int
-  matureTime Int
-  exp        Int
-  yield      Int    @default(1)
-  requiredLandType String @default("normal")
-  requiredLevel Int @default(1)
-  maxHarvests Int    @default(1) 
-  regrowTime  Int    @default(0) 
-}
-
 model Follow {
   id          Int    @id @default(autoincrement())
   follower    Player   @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
@@ -73,19 +59,4 @@ model Notification {
   data      String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
-}
-
-model GameLog {
-  id        Int      @id @default(autoincrement())
-  player    Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
-  playerId  String?  // 允许为空 (系统日志)
-  
-  action    String   // 操作类型 e.g. "HARVEST"
-  details   Json     // 完整日志详情 (JSONB)
-  
-  createdAt DateTime @default(now())
-
-  @@index([playerId])
-  @@index([createdAt])
-  @@index([action])
 }

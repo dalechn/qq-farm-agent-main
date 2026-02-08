@@ -1,20 +1,19 @@
 /**
- * Multi Agent Test - Node.js Version
+ * Multi Agent Test - Node.js Version (Robust)
  * * Usage: node multi_agent_test.js
  * * 核心逻辑 (Update):
- * 1. 初始化：注册所有机器人。
- * 2. 社交构建：所有机器人两两互相关注 (模拟互粉)。
- * 3. 游戏循环：
- * - 优先维护自家农场。
- * - 获取/刷新好友列表。
- * - 仅对好友列表中的玩家进行 偷菜 (40%) 或 助人 (60%)。
+ * 1. 初始化：使用唯一Hash生成名字，循环注册直到满员。
+ * 2. 社交构建：全员互粉，确保构建完整的 P2P 社交图谱。
+ * 3. 游戏循环：基于最新的好友列表进行偷菜/助人。
  */
+
+const crypto = require('crypto'); // 引入 crypto 用于生成唯一ID
 
 // ================= 配置区域 =================
 const API_BASE = "http://localhost:3001/api";
 const AUTH_BASE = "http://localhost:3002/api/auth";
 
-const PLAYERS_COUNT = 100; // 机器人数量
+const PLAYERS_COUNT = 10; // 目标机器人数量
 const LOOP_COUNT = 500;    // 每个机器人行动的回合数
 
 // 模拟的作物配置 (需与后端一致)
@@ -31,8 +30,14 @@ const CROPS_CONFIG = [
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const randomChoice = (arr) => arr[Math.floor(Math.random() * arr.length)];
-// ===========================================
 
+// 生成唯一且易读的名字: Bot_序号_Hash前3位
+const generateUniqueName = (index) => {
+  const hash = crypto.randomBytes(3).toString('hex');
+  return `Bot_${index}_${hash}`;
+};
+
+// ================= Agent 类 =================
 class FarmAgent {
   constructor(name) {
     this.name = name;
@@ -49,7 +54,7 @@ class FarmAgent {
     console.log(`[${this.name} Lv.${this.level}] ${message}`);
   }
 
-  // [修改] 支持 baseUrl 参数，以便请求不同的服务 (Game vs Auth)
+  // 通用请求方法
   async request(endpoint, method = "GET", body = null, baseUrl = API_BASE) {
     if (!this.apiKey && endpoint !== '/player') return null;
 
@@ -65,7 +70,9 @@ class FarmAgent {
     try {
       const res = await fetch(`${baseUrl}${endpoint}`, options);
       const isJson = res.headers.get("content-type")?.includes("application/json");
+
       if (!res.ok) {
+        // 调试用：如果报错，可以尝试读取错误文本
         // const txt = await res.text();
         // console.error(`Req Failed: ${baseUrl}${endpoint} ${res.status}`, txt);
         return null;
@@ -86,6 +93,7 @@ class FarmAgent {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: this.name })
       });
+
       if (res.ok) {
         const data = await res.json();
         this.playerId = data.id;
@@ -93,37 +101,34 @@ class FarmAgent {
         this.gold = data.gold;
         this.log(`注册成功 ID:${this.playerId.slice(0, 6)}...`);
         return true;
+      } else {
+        const txt = await res.text();
+        console.error(`[${this.name}] 注册失败: ${res.status} - ${txt}`);
       }
     } catch (e) {
-      console.error("Reg error", e);
+      console.error(`[${this.name}] 注册异常:`, e);
     }
     return false;
   }
 
   async follow(targetId) {
-    // 调用 Auth Server
     return this.request('/follow', 'POST', { targetId }, AUTH_BASE);
   }
 
   async fetchFriends() {
-    // 调用 Auth Server 获取好友 (不带分页即获取全量/默认量)
-    // 接口返回结构可能是 Array 或 { data: [] }
     const res = await this.request('/friends', 'GET', null, AUTH_BASE);
     if (res) {
-      // 兼容 FollowService 可能返回的两种格式
+      // 兼容可能返回 { data: [] } 或 []
       const list = Array.isArray(res) ? res : (res.data || []);
-      // 转换格式适配 playTurn 的使用习惯 (统一使用 playerId 字段)
       this.friends = list.map(f => ({
         playerId: f.id,
         name: f.name,
         level: f.level
       }));
-      // this.log(`已更新好友列表: ${this.friends.length} 人`);
     }
   }
 
   async refreshState() {
-    // 调用 Game Server
     const data = await this.request('/me', 'GET', null, API_BASE);
     if (data) {
       this.lands = data.lands || [];
@@ -140,9 +145,8 @@ class FarmAgent {
     // 1. 刷新状态
     await this.refreshState();
 
-    // 2. 刷新好友 (模拟真实情况，不用每次都刷，但测试环境为了确保数据最新可以每次刷，或者按概率刷)
-    // 为了不给 Auth Server 太大压力，可以加个判断，或者简单处理
-    if (this.friends.length === 0) {
+    // 2. 刷新好友 (如果列表为空，强制刷新；否则低概率刷新)
+    if (this.friends.length === 0 || Math.random() < 0.05) {
       await this.fetchFriends();
     }
 
@@ -152,7 +156,7 @@ class FarmAgent {
       if (land.status === "harvestable") {
         const res = await this.request('/harvest', 'POST', { position: land.position });
         if (res && res.success) {
-          this.log(`自家收获 +${res.gold}G`); // 注意后端返回字段是 gold 而不是 reward.gold
+          this.log(`自家收获 +${res.gold}G`);
         }
       }
     }
@@ -198,19 +202,16 @@ class FarmAgent {
         // >>> 40% 概率：偷菜 <<<
         await this.doStealRoutine(this.friends);
       }
-    } else {
-      // this.log("没有好友，无法进行社交互动");
     }
   }
 
   // --- 偷菜子程序 ---
   async doStealRoutine(targets) {
-    // 随机找 2-3 个目标
     const count = Math.min(targets.length, 3);
     const victims = targets.sort(() => 0.5 - Math.random()).slice(0, count);
 
     for (const victim of victims) {
-      // 每个人盲猜 2 个位置 (降低频率防止刷屏)
+      // 盲猜 2 个位置
       const tryPositions = new Set();
       while (tryPositions.size < 2) tryPositions.add(randomInt(0, 11));
 
@@ -236,14 +237,14 @@ class FarmAgent {
       const tryPositions = [randomInt(0, 5), randomInt(6, 11)];
 
       for (const pos of tryPositions) {
-        // 1. 尝试铲除枯萎
+        // 尝试铲除枯萎
         const resShovel = await this.request('/shovel', 'POST', { targetId: target.playerId, position: pos }, API_BASE);
         if (resShovel && resShovel.success) {
           this.log(`😇 帮好友 [${target.name}] 铲除了枯萎作物`);
           continue;
         }
 
-        // 2. 尝试照料
+        // 尝试照料
         const action = randomChoice(['water', 'weed', 'pest']);
         const resCare = await this.request('/care', 'POST', { targetId: target.playerId, position: pos, type: action }, API_BASE);
         if (resCare && resCare.success) {
@@ -261,42 +262,63 @@ async function botWorker(agent) {
   // 错开启动
   await sleep(randomInt(0, 2000));
 
-  // 初始拉取一次好友列表
-  await agent.fetchFriends();
-  agent.log(`初始好友加载完成: ${agent.friends.length} 人`);
-
   for (let i = 0; i < LOOP_COUNT; i++) {
     await agent.playTurn();
-    // 随机间隔
+    // 随机间隔 2-5秒
     await sleep(randomInt(2000, 5000));
   }
 }
 
 async function main() {
-  console.log(`=== 1. 初始化: 创建并注册 ${PLAYERS_COUNT} 个 Bot ===`);
+  console.log(`=== 1. 初始化: 尝试注册 ${PLAYERS_COUNT} 个 Bot ===`);
   const bots = [];
 
-  for (let i = 0; i < PLAYERS_COUNT; i++) {
-    const bot = new FarmAgent(`Bot_${randomInt(1000, 9999)}`);
-    if (await bot.register()) bots.push(bot);
-    await sleep(20);
+  let attempts = 0;
+  // 循环直到注册够人数，或者尝试太多次
+  while (bots.length < PLAYERS_COUNT && attempts < PLAYERS_COUNT * 2) {
+    attempts++;
+    // 使用唯一命名
+    const botName = generateUniqueName(bots.length + 1);
+    const bot = new FarmAgent(botName);
+
+    // 注册，失败则会打印日志
+    if (await bot.register()) {
+      bots.push(bot);
+    }
+
+    // 短暂间隔防止请求过快
+    await sleep(100);
+  }
+
+  if (bots.length < PLAYERS_COUNT) {
+    console.warn(`\n⚠️ 警告: 只注册成功了 ${bots.length} 个 Bot (目标 ${PLAYERS_COUNT})`);
+  } else {
+    console.log(`\n✅ 成功注册全部 ${bots.length} 个 Bot`);
   }
 
   console.log(`\n=== 2. 构建社交网络 (全员互粉) ===`);
-  // 让每个机器人关注其他所有机器人
   for (let i = 0; i < bots.length; i++) {
     const me = bots[i];
     const others = bots.filter(b => b.playerId !== me.playerId);
 
-    // 简化日志
     process.stdout.write(`\r[${me.name}] 正在关注 ${others.length} 人...`);
 
-    const followPromises = others.map(other => me.follow(other.playerId));
-    await Promise.all(followPromises);
+    // 并发关注所有人，提高速度
+    await Promise.all(others.map(other => me.follow(other.playerId)));
   }
-  console.log(`\n✅ 社交网络构建完成！所有人都互相关注了。\n`);
+  console.log(`\n✅ 社交网络构建完成！\n`);
 
-  console.log(`=== 3. 开始游戏循环 (基于好友列表互动) ===`);
+  console.log(`=== 3. 准备开始: 所有人同步好友列表 ===`);
+  // 这一步很关键：确保在游戏开始前，每个人的 friends 列表都是满的
+  await Promise.all(bots.map(bot => {
+    return bot.fetchFriends().then(() => {
+      // 可选：打印一下确认
+      // console.log(`  > ${bot.name} 好友数: ${bot.friends.length}`);
+    });
+  }));
+  console.log(`✅ 好友列表同步完成。\n`);
+
+  console.log(`=== 4. 开始游戏循环 ===`);
 
   const promises = bots.map(bot => botWorker(bot));
   await Promise.all(promises);

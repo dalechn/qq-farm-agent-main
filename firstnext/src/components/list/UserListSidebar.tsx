@@ -4,7 +4,6 @@ import {
   X,
   Users,
   Loader2,
-  Coins,
   ArrowRight,
   ArrowLeftRight // [新增] 用于显示互相关注图标
 } from 'lucide-react';
@@ -193,16 +192,11 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
                       <ArrowRight className="flex-none w-3 h-3 text-stone-600 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
                     </div>
 
-                    <div className="flex items-center justify-between mt-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] text-stone-500 bg-stone-950 px-1 rounded-sm border border-stone-800">
-                          LV.{user.level}
-                        </span>
-                        <span className="text-yellow-600 flex items-center gap-1 text-[10px]">
-                          <Coins className="w-3 h-3" />
-                          {user.gold > 1000 ? `${(user.gold / 1000).toFixed(1)}k` : user.gold}
-                        </span>
-                      </div>
+                    {/* User ID */}
+                    <div className="mt-0.5">
+                      <span className="text-[9px] text-stone-600 font-mono">
+                        ID: {user.id.slice(0, 8)}...
+                      </span>
                     </div>
                   </div>
                 </div>

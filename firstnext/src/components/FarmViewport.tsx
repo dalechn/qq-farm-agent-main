@@ -12,7 +12,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type Player, type FollowUser } from "@/lib/api";
+import { type Player, type FollowUser, publicApi } from "@/lib/api";
 import { LandTile } from "@/components/LandTile";
 import { useState, useEffect } from "react";
 
@@ -146,6 +146,8 @@ export function FarmViewport({
     const interval = setInterval(updateTime, 1000);
     return () => clearInterval(interval);
   }, [activeUntil, debugMode]);
+
+
 
   let secConfig = { value: "NULL", color: "text-stone-500", bg: "bg-stone-800" };
   if (hasDog) {
@@ -356,16 +358,16 @@ export function FarmViewport({
 
               <div className="flex gap-2 flex-nowrap">
 
-                <MiniStat label={t('status.idle')} value={selectedPlayer.lands.filter((l) => l.status === "empty").length} color="text-stone-300" bg="bg-stone-700" />
-                <MiniStat label={t('status.grow')} value={selectedPlayer.lands.filter((l) => l.status === "planted").length} color="text-blue-200" bg="bg-blue-900" />
+                <MiniStat label={t('status.idle')} value={selectedPlayer.lands?.filter((l) => l.status === "empty").length || 0} color="text-stone-300" bg="bg-stone-700" />
+                <MiniStat label={t('status.grow')} value={selectedPlayer.lands?.filter((l) => l.status === "planted").length || 0} color="text-blue-200" bg="bg-blue-900" />
                 <MiniStat
                   label={t('status.care')}
-                  value={selectedPlayer.lands.filter((l) => l.status !== "withered" && (l.hasWeeds || l.hasPests || l.needsWater)).length}
+                  value={selectedPlayer.lands?.filter((l) => l.status !== "withered" && (l.hasWeeds || l.hasPests || l.needsWater)).length || 0}
                   color="text-yellow-200"
                   bg="bg-yellow-900"
                 />
-                <MiniStat label={t('status.ripe')} value={selectedPlayer.lands.filter((l) => l.status === "harvestable").length} color="text-green-200" bg="bg-green-900" />
-                <MiniStat label={t('status.dead')} value={selectedPlayer.lands.filter((l) => l.status === "withered").length} color="text-red-200" bg="bg-red-900" />
+                <MiniStat label={t('status.ripe')} value={selectedPlayer.lands?.filter((l) => l.status === "harvestable").length || 0} color="text-green-200" bg="bg-green-900" />
+                <MiniStat label={t('status.dead')} value={selectedPlayer.lands?.filter((l) => l.status === "withered").length || 0} color="text-red-200" bg="bg-red-900" />
 
                 <MiniStat
                   label={t('status.sec')}
@@ -382,7 +384,7 @@ export function FarmViewport({
 
               <div className="grid grid-cols-3 gap-6 relative z-10">
                 {Array.from({ length: TOTAL_LAND_SLOTS }).map((_, index) => {
-                  const land = selectedPlayer.lands.find(l => l.position === index);
+                  const land = selectedPlayer.lands?.find(l => l.position === index);
                   return (
                     <LandTile
                       key={land ? land.id : `locked-${index}`}

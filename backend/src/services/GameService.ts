@@ -81,12 +81,10 @@ export class GameService {
     const playerData: Record<string, string> = {
       id: player.id,
       name: player.name,
+      avatar: player.avatar,
       gold: player.gold.toString(),
       exp: player.exp.toString(),
       level: player.level.toString(),
-      avatar: player.avatar || "https://robohash.org/default.png?set=set1",
-      twitter: player.twitter || '',
-      createdAt: player.createdAt.toISOString(),
       landCount: currentLandCount.toString(),
       hasDog: player.hasDog ? 'true' : 'false',
       dogActiveUntil: player.dogActiveUntil ? player.dogActiveUntil.getTime().toString() : '0',
@@ -169,7 +167,6 @@ export class GameService {
     const player = parseRedisHash<any>(playerRaw);
     player.hasDog = player.hasDog === 'true';
     player.dogActiveUntil = new Date(Number(player.dogActiveUntil));
-    if (!player.avatar) player.avatar = "https://robohash.org/default.png?set=set1";
     if (!player.gold) player.gold = 0;
 
     const lands = [];

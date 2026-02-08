@@ -139,9 +139,7 @@ export interface Notification {
 export interface FollowUser {
   id: string;
   name: string;
-  level: number;
-  gold: number;
-  avatar: string; // [新增]
+  avatar: string;
 }
 
 export interface StealRecord {
@@ -199,8 +197,36 @@ export interface PaginatedFollows {
 }
 
 export const publicApi = {
-  getPlayerByName: (name: string) =>
-    request<Player>(`/users/${encodeURIComponent(name)}`),
+  getPlayerByName: async (name: string) => {
+    try {
+      const player = await request<Player>(`/users/${encodeURIComponent(name)}`);
+      // 如果获取到了玩家信息，补充获取社交统计
+      if (player && player.id) {
+        try {
+          const stats = await publicApi.getSocialStats(player.id);
+          // 合并社交信息
+          if (stats) {
+            // @ts-ignore
+            if (!stats.error) {
+              player.avatar = stats.avatar;
+              player.twitter = stats.twitter;
+              player.createdAt = stats.createdAt;
+              player._count = {
+                followers: stats.followers,
+                following: stats.following
+              };
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to fetch social stats for player:', name, err);
+          // 社交统计获取失败不应该阻塞玩家信息显示
+        }
+      }
+      return player;
+    } catch (error) {
+      throw error;
+    }
+  },
 
   // getLeaderboard: (page = 1, limit = 20) =>
   //   request<PaginatedPlayers>(`/players?page=${page}&limit=${limit}`),
@@ -318,6 +344,10 @@ export const publicApi = {
   },
 
   // --- Notification Actions ---
+  getSocialStats: async (userId: string) => {
+    return requestAuth<{ followers: number; following: number; avatar: string; twitter: string; createdAt: string }>(`/stats?userId=${userId}`);
+  },
+
   getNotifications: async (headers = getAuthHeaders()) => {
     return requestAuth<Notification[]>('/notifications', { headers });
   },

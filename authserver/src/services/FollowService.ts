@@ -173,9 +173,7 @@ export class FollowService {
       select: {
         id: true,
         name: true,
-        avatar: true,
-        level: true,
-        gold: true, // [新增/修改]
+        avatar: true
       }
     });
 
@@ -200,8 +198,6 @@ export class FollowService {
       id: string;
       name: string;
       avatar: string;
-      level: number;
-      gold: number;
     };
 
     const result = targetIds.map((tid, index) => {
@@ -219,8 +215,6 @@ export class FollowService {
         id: user.id,
         name: user.name,
         avatar: user.avatar,
-        level: user.level,
-        gold: user.gold, // [新增]
         isMutual
       };
     });
