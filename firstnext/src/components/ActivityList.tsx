@@ -22,7 +22,7 @@ export function getActionColor(action: string) {
 
 interface ActivityListProps {
   logs: ActionLog[];
-  onPlayerClick?: (name: string) => void;
+  onPlayerClick?: (id: string) => void; // [修改] 传递 ID
   hasMore: boolean;
   onLoadMore: () => void;
   isLoadingMore: boolean;
@@ -101,7 +101,8 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
                 className="text-orange-500 font-bold mr-2 hover:underline hover:text-orange-400 relative z-10"
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (onPlayerClick) onPlayerClick(log.playerName);
+                  // [修改] 传递 log.playerId
+                  if (onPlayerClick) onPlayerClick(log.playerId);
                 }}
               >
                 {log.playerName}

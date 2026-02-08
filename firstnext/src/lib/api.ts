@@ -197,9 +197,12 @@ export interface PaginatedFollows {
 }
 
 export const publicApi = {
-  getPlayerByName: async (name: string) => {
+  // [修改] 改为通过 ID 获取
+  getPlayerById: async (id: string) => {
     try {
-      const player = await request<Player>(`/users/${encodeURIComponent(name)}`);
+      // 这里的 endpoint 对应后端的 /users/:id
+      const player = await request<Player>(`/users/${id}`);
+
       // 如果获取到了玩家信息，补充获取社交统计
       if (player && player.id) {
         try {
@@ -218,14 +221,19 @@ export const publicApi = {
             }
           }
         } catch (err) {
-          console.warn('Failed to fetch social stats for player:', name, err);
-          // 社交统计获取失败不应该阻塞玩家信息显示
+          console.warn('Failed to fetch social stats for player:', id, err);
         }
       }
       return player;
     } catch (error) {
       throw error;
     }
+  },
+
+  // [新增] 按名字搜索
+  searchUserByName: async (name: string) => {
+    // 调用 Auth Server 的 /search 接口
+    return requestAuth<{ id: string; name: string; avatar: string }>(`/search?name=${encodeURIComponent(name)}`);
   },
 
   // getLeaderboard: (page = 1, limit = 20) =>

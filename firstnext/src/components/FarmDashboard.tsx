@@ -20,10 +20,10 @@ import { LogSidebar } from "@/components/LogSidebar";
 import { useI18n } from "@/lib/i18n";
 
 interface FarmDashboardProps {
-  initialUsername?: string;
+  initialUserId?: string; // [修改] 接收 ID
 }
 
-export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
+export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   const router = useRouter();
   const { t } = useI18n();
 
@@ -62,45 +62,41 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
   const [isAgentLogsLoading, setIsAgentLogsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // [新增] 核心：刷新当前选中玩家的数据
+  // [修改] 刷新当前选中玩家的数据 (使用 getPlayerById)
   const refreshSelectedPlayer = useCallback(async () => {
     if (!selectedPlayer) return;
 
-    // 不显示全局 loading，只在局部（比如按钮）显示 loading 状态，或者用 isPlayerLoading 控制
-    // 这里我们可以复用 isPlayerLoading，但这会让整个视口变灰，体验一般
-    // 建议只在后台静默刷新，或者让 FarmViewport 自己处理 loading 态
-    // 为了简单，我们这里暂时不设 isPlayerLoading，只更新数据
     try {
-      const freshData = await publicApi.getPlayerByName(selectedPlayer.name);
+      const freshData = await publicApi.getPlayerById(selectedPlayer.id); // Change to ID
       setSelectedPlayer(freshData);
-      updatePlayer(freshData); // 同步更新排行榜里的数据
+      updatePlayer(freshData);
     } catch (e) {
       console.warn("Failed to refresh player:", e);
     }
   }, [selectedPlayer, updatePlayer]);
 
-  // 初始化用户
+  // [修改] 初始化用户 (使用 ID)
   useEffect(() => {
-    if (initialUsername) {
+    if (initialUserId) {
       setIsPlayerLoading(true);
-      publicApi.getPlayerByName(initialUsername)
+      publicApi.getPlayerById(initialUserId) // Change to ID
         .then((player) => {
           setSelectedPlayer(player);
           updatePlayer(player);
         })
         .catch(() => {
-          console.warn(`User ${initialUsername} not found`);
+          console.warn(`User ${initialUserId} not found`);
         })
         .finally(() => setIsPlayerLoading(false));
     }
-  }, [initialUsername, updatePlayer]);
+  }, [initialUserId, updatePlayer]);
 
   // 默认选中第一个
   useEffect(() => {
-    if (!initialUsername && !selectedPlayer && players.length > 0) {
+    if (!initialUserId && !selectedPlayer && players.length > 0) {
       setSelectedPlayer(players[0]);
     }
-  }, [players, selectedPlayer, initialUsername]);
+  }, [players, selectedPlayer, initialUserId]);
 
   // Agent 日志
   const fetchAgentLogs = (playerId: string) => {
@@ -144,15 +140,18 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
     setIsRefreshing(false);
   };
 
-  const switchPlayer = async (name: string) => {
+  // [修改] 切换玩家逻辑 (使用 ID)
+  const switchPlayer = async (id: string) => {
     if (window.innerWidth < 1024) {
-      router.push(`/u/${name}`);
+      // 路由跳转使用 ID
+      router.push(`/u/${id}`);
       setIsActivityOpen(false);
     } else {
       setIsPlayerLoading(true);
-      window.history.pushState(null, '', `/u/${name}`);
+      // 更新 URL 但不跳转
+      window.history.pushState(null, '', `/u/${id}`);
       try {
-        const freshData = await publicApi.getPlayerByName(name);
+        const freshData = await publicApi.getPlayerById(id); // Change to ID
         setSelectedPlayer(freshData);
         updatePlayer(freshData);
       } catch (e) {
@@ -167,11 +166,13 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
     if (window.innerWidth >= 1024) {
       setSelectedPlayer(player);
     }
-    switchPlayer(player.name);
+    // 传递 ID
+    switchPlayer(player.id);
   };
 
-  const handleLogPlayerClick = (name: string) => {
-    switchPlayer(name);
+  // [修改] 接收 ID
+  const handleLogPlayerClick = (id: string) => {
+    switchPlayer(id);
   };
 
   const currentLogs = activeLogTab === 'global' ? globalLogs : agentLogs;
@@ -208,7 +209,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         hasMore={hasMorePlayers}
         onLoadMore={loadMorePlayers}
         stats={stats}
-        isHiddenOnMobile={!!initialUsername}
+        isHiddenOnMobile={!!initialUserId} // Check ID existence
         sortBy={sortBy}       // [新增]
 
         onSortChange={setSortBy} // [新增]
@@ -221,7 +222,7 @@ export function FarmDashboard({ initialUsername }: FarmDashboardProps) {
         selectedPlayer={selectedPlayer}
         isSearching={false}
         isPlayerLoading={isPlayerLoading}
-        showOnMobile={!!initialUsername}
+        showOnMobile={!!initialUserId}
         onRefresh={refreshSelectedPlayer} // [修改] 传入专门的刷新函数
       />
 

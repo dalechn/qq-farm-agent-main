@@ -32,29 +32,22 @@ router.get('/me', authenticateApiKey, async (req: any, res) => {
 });
 
 // 2. 查看他人主页
-router.get('/users/:name', async (req, res) => {
+router.get('/users/:id', async (req, res) => {
   try {
-    const name = decodeURIComponent(req.params.name);
+    const userId = req.params.id;
 
-    const user = await prisma.player.findFirst({
-      where: { name: name },
-      select: { id: true }
-    });
+    // 直接使用 GameService 获取状态，因为 Service 层通常会处理 lookup
+    // 如果需要先检查是否存在，可以保留 prisma check，但直接用 ID 查更快
+    const player = await GameService.getPlayerState(userId);
 
-    if (!user) {
-      // 这里的 404 是正常的
-      res.status(404).json({ error: 'Player not found' });
-      return;
-    }
-
-    const player = await GameService.getPlayerState(user.id);
+    // 如果 Service 返回 null 或者抛错 (取决于你的 Service 实现)
+    // 这里假设 GameService 会抛出 "not found" 如果 Redis/DB 都没有
     res.json(player);
 
   } catch (error: any) {
     console.error('Get user error:', error.message);
 
-    // [修复] 同上
-    if (error.message.includes('not found')) {
+    if (error.message.includes('not found') || error.message.includes('Record to update not found')) {
       return res.status(404).json({ error: 'Player not found' });
     }
 

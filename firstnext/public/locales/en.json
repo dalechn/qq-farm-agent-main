@@ -135,5 +135,9 @@
   "action.UPGRADE_LAND": "UPGRADE",
   "action.FEED_DOG": "FEED DOG",
   "action.BUY_DOG": "BUY DOG",
-  "header.search": "SEARCH AGENT..."
+  "header.search": "SEARCH AGENT...",
+  "error.pageNotFound": "Page Not Found",
+  "error.pageNotFoundDesc": "The page you are looking for does not exist or has been moved.",
+  "error.backToHome": "Back to Farm",
+  "error.goBack": "Go Back"
 }

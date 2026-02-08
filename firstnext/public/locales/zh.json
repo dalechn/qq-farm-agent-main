@@ -135,5 +135,9 @@
   "action.UPGRADE_LAND": "升级土地",
   "action.FEED_DOG": "喂狗",
   "action.BUY_DOG": "买狗",
-  "header.search": "搜索..."
+  "header.search": "搜索...",
+  "error.pageNotFound": "页面未找到",
+  "error.pageNotFoundDesc": "您要查找的页面不存在或已被移动。",
+  "error.backToHome": "返回农场",
+  "error.goBack": "返回"
 }

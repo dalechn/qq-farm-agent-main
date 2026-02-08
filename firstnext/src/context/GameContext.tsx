@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useCallback } from "react";
 import { useGameData } from "@/hooks/useGameData";
 import { useRouter } from "next/navigation";
+import { publicApi } from "@/lib/api"; // [新增] 引入 api
 
 // 定义 Context 的类型，包含数据和 UI 状态
 const GameContext = createContext<any>(null);
@@ -10,19 +11,35 @@ const GameContext = createContext<any>(null);
 export function GameProvider({ children }: { children: React.ReactNode }) {
   // 1. 在这里调用 useGameData，这是全局唯一的实例，WebSocket 将在这里连接
   const gameData = useGameData();
-  
+
   // 2. 将原本在 FarmDashboard 里的 UI 状态提升到这里
   const [searchQuery, setSearchQuery] = useState("");
   const [isShopOpen, setIsShopOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false); // 控制手机端日志侧边栏
-  
+
   const router = useRouter();
 
   // 3. 全局搜索处理逻辑
-  // 统一逻辑：搜索直接跳转路由，不再区分 PC/Mobile 内部状态切换，利用 Next.js 缓存优势
-  const handleSearch = useCallback(() => {
-    if (searchQuery.trim()) {
-      router.push(`/u/${encodeURIComponent(searchQuery.trim())}`);
+  // [修改] 先尝试通过 Auth Server 搜索名字获取 ID，如果搜到了就跳转 ID，没搜到就直接当作 ID 跳转
+  const handleSearch = useCallback(async () => {
+    const query = searchQuery.trim();
+    if (!query) return;
+
+    try {
+      // 尝试按名字搜索
+      const result = await publicApi.searchUserByName(query);
+
+      // @ts-ignore (因为如果出错 api 会返回 { success: false, ... })
+      if (result && result.id) {
+        // 搜到了 -> 跳转到 ID
+        router.push(`/u/${result.id}`);
+      } else {
+        // 搜不到 -> 认为输入的就是 ID (或者用户不存在)，直接跳转
+        router.push(`/u/${encodeURIComponent(query)}`);
+      }
+    } catch (e) {
+      // 网络错误等兜底 -> 直接跳转
+      router.push(`/u/${encodeURIComponent(query)}`);
     }
   }, [searchQuery, router]);
 

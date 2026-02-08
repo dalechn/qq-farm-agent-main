@@ -92,9 +92,10 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
     fetchData(nextPage, true);
   };
 
-  const handleUserClick = (username: string) => {
+  // [修改] 接收 ID
+  const handleUserClick = (userId: string) => {
     onClose();
-    router.push(`/u/${username}`);
+    router.push(`/u/${userId}`);
   };
 
   return (
@@ -154,7 +155,7 @@ export function UserListSidebar({ isOpen, onClose, type, playerId }: UserListSid
               {data.map((user, index) => (
                 <div
                   key={`${user.id}-${index}`}
-                  onClick={() => handleUserClick(user.name)}
+                  onClick={() => handleUserClick(user.id)} // [修改] 传 user.id
                   className="
                     group relative p-3 cursor-pointer transition-all duration-100 flex items-center gap-3
                     font-mono border-b border-stone-800
