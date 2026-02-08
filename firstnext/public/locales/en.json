@@ -35,7 +35,7 @@
   "toast.harvestedWithLoss": "Harvested {crop}! +{gold} Gold (Lost {loss} due to poor health)",
   "toast.stolen": "Stole {amount} {crop}!",
   "toast.bittenByDog": "Bitten by dog! Lost {penalty} gold",
-  "toast.dailyLimitReached": "You've stolen enough for today! ({current}/{limit} gold) Come back tomorrow! 🎉",
+  "toast.dailyLimitReached": "You've stolen enough for today! ({current}/{limit} gold) Come back tomorrow!",
   "toast.actionFailed": "Action failed",
   "toast.careFailed": "Care failed",
   "toast.shovelFailed": "Shovel failed",

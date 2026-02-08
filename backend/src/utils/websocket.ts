@@ -1,3 +1,4 @@
+
 import { WebSocketServer, WebSocket } from 'ws';
 import { Server } from 'http';
 import prisma from './prisma';
@@ -94,6 +95,7 @@ export function setupWebSocket(server: Server) {
  * 3. 通过 WebSocket 推送给前端
  */
 export async function broadcast(message: any, includeGlobal = true) {
+  // [关键] logEntry 是扁平化的结构，包含了 action, details(string), data(object) 等
   const logEntry = {
     id: uuidv4(),
     timestamp: new Date().toISOString(),
@@ -142,15 +144,16 @@ export async function broadcast(message: any, includeGlobal = true) {
     await pipeline.exec();
 
     // ------------------------------------------
-    // 3. 永久存储 (BullMQ -> Worker -> Postgres)
+    // 3. 永久存储 (BullMQ -> Worker -> Postgres/ClickHouse)
     // ------------------------------------------
-    await logQueue.add('log', {
-      playerId: message.playerId || null,
-      action: message.action || 'UNKNOWN',
-      details: message, // 完整消息存入 JSONB
-      createdAt: logEntry.timestamp
-    });
-
+    // [修复] 直接发送 logEntry，保持扁平结构，不要嵌套在 details 里
+    // 之前的错误写法: details: message (导致 message 对象变成了 details 字段)
+    await logQueue.add('log', logEntry);
+    // console.log(JSON.stringify({
+    //   level: 'info',
+    //   service: 'game-server',
+    //   ...logEntry
+    // }));
   } catch (e) {
     console.error('Failed to buffer log to Redis/Queue:', e);
   }

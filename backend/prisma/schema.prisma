@@ -36,7 +36,6 @@ model Player {
   followers Follow[] @relation("Followers") 
   
   notifications Notification[]
-  logs      GameLog[]
 }
 
 model Crop {
@@ -73,19 +72,4 @@ model Notification {
   data      String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
-}
-
-model GameLog {
-  id        Int      @id @default(autoincrement())
-  player    Player?  @relation(fields: [playerId], references: [id], onDelete: SetNull)
-  playerId  String?  // 允许为空 (系统日志)
-  
-  action    String   // 操作类型 e.g. "HARVEST"
-  details   Json     // 完整日志详情 (JSONB)
-  
-  createdAt DateTime @default(now())
-
-  @@index([playerId])
-  @@index([createdAt])
-  @@index([action])
 }

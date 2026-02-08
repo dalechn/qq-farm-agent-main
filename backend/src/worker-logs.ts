@@ -2,22 +2,22 @@
 
 import { Worker } from 'bullmq';
 import dotenv from 'dotenv';
-import prisma from './utils/prisma';
+import clickhouse from './utils/clickhouse';
 import { connection, QUEUE_NAME_LOGS } from './utils/queue';
 
 dotenv.config();
 
-console.log('📜 Log Worker (BullMQ) initializing...');
+console.log('📜 Log Worker (BullMQ -> ClickHouse) initializing...');
 
 // 缓冲区配置
 const BATCH_SIZE = 100;
 const FLUSH_INTERVAL = 2000; // ms
 
-// 本地内存缓冲，用于积攒日志
+// 本地内存缓冲
 let logBuffer: any[] = [];
 let flushTimer: NodeJS.Timeout | null = null;
 
-// 执行数据库写入
+// 执行数据库写入 (ClickHouse)
 async function flushLogs() {
     if (logBuffer.length === 0) return;
 
@@ -25,26 +25,45 @@ async function flushLogs() {
     const batch = [...logBuffer];
     logBuffer = []; // 清空
 
-    console.log(`[Logs] Flushing ${batch.length} logs to DB...`);
+    console.log(`[Logs] Flushing ${batch.length} logs to ClickHouse...`);
 
     try {
-        await prisma.gameLog.createMany({
-            data: batch.map(log => ({
-                playerId: log.playerId,
-                action: log.action,
-                details: log.details,
-                createdAt: new Date(log.createdAt)
-            })),
-            skipDuplicates: true
+        // [修改] 将变量名从 log 改为 entry，避免和下面的 log 字段混淆
+        const rows = batch.map(entry => {
+            // [修复] 处理时间格式
+            // 优先使用 timestamp (ActionLog 标准字段)，如果没有则尝试 createdAt 或当前时间
+            const d = new Date(entry.timestamp || entry.createdAt || Date.now());
+            const timestampInSeconds = Math.floor(d.getTime() / 1000);
+
+            // [关键修复] 构建一个安全的 log 对象
+            // 强制将 details 转换为字符串，防止前端 React 渲染对象时报错
+            const safeLog = {
+                ...entry,
+                details: typeof entry.details === 'object' ? JSON.stringify(entry.details) : String(entry.details || '')
+            };
+
+            return {
+                timestamp: timestampInSeconds,
+                player_id: entry.playerId ? String(entry.playerId) : '',
+                action: entry.action ? String(entry.action) : 'UNKNOWN',
+                container_id: 'worker-node',
+                container_name: 'backend-worker',
+                log: JSON.stringify(safeLog) // 使用清洗后的对象进行序列化
+            };
         });
+
+        await clickhouse.insert({
+            table: 'qq_farm_logs.game_logs',
+            values: rows,
+            format: 'JSONEachRow'
+        });
+
     } catch (err) {
-        console.error('[Logs] Error flushing logs to DB:', err);
-        // 注意：如果是批量写入失败，这里的日志会丢失。
-        // 对于高吞吐日志，通常接受"至多一次"交付。如果必须要保证不丢，需要更复杂的重试逻辑。
+        console.error('[Logs] Error flushing logs to ClickHouse:', err);
     }
 }
 
-// 启动定时器，防止日志量少时长时间不写入
+// 启动定时器
 function resetFlushTimer() {
     if (flushTimer) clearTimeout(flushTimer);
     flushTimer = setTimeout(() => {
@@ -55,30 +74,26 @@ function resetFlushTimer() {
 
 // 初始化 Worker
 const worker = new Worker(QUEUE_NAME_LOGS, async (job) => {
-    // 1. 将任务数据推入本地缓冲
-    // BullMQ 的 job.data 就是我们在 broadcast 里 add 的对象
-    logBuffer.push(job.data);
+    // 确保 job.data 存在
+    if (job && job.data) {
+        logBuffer.push(job.data);
+    }
 
-    // 2. 如果缓冲满了，立即触发写入
     if (logBuffer.length >= BATCH_SIZE) {
         await flushLogs();
-        // 重置定时器，避免刚写完又触发
         resetFlushTimer();
     }
 
-    // 3. 立即返回，标记任务完成。
-    // 我们不需要等待数据库写入才告诉 BullMQ 完成，因为我们已经在内存里接管了数据。
     return true;
 }, {
     connection,
-    concurrency: 1 // [重要] 必须单并发，确保 logBuffer 的线程安全
+    concurrency: 1
 });
 
 worker.on('failed', (job, err) => {
     console.error(`[Logs] Job ${job?.id} failed:`, err);
 });
 
-// 启动定时器
 resetFlushTimer();
 
 console.log(`✅ Log Worker started listening on queue: ${QUEUE_NAME_LOGS}`);

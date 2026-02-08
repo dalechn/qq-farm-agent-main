@@ -64,8 +64,11 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   // [新增] 404 状态
   const [notFound, setNotFound] = useState(false);
 
-  // [修改] 刷新当前选中玩家的数据 (使用 getPlayerById)
-  const refreshSelectedPlayer = useCallback(async () => {
+  /* New State */
+  const [isPlayerRefreshing, setIsPlayerRefreshing] = useState(false);
+
+  // [修改] 内部刷新函数
+  const refreshSelectedPlayerInternal = useCallback(async () => {
     if (!selectedPlayer) return;
 
     try {
@@ -78,6 +81,18 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
       // 这里刷新失败一般不置为 404，可能是网络问题，除非明确 404
     }
   }, [selectedPlayer, updatePlayer]);
+
+  // 手动刷新 (带动画)
+  const handleManualRefresh = async () => {
+    setIsPlayerRefreshing(true);
+    await refreshSelectedPlayerInternal();
+    setIsPlayerRefreshing(false);
+  };
+
+  // 自动刷新 (无动画)
+  const handleBackgroundRefresh = async () => {
+    await refreshSelectedPlayerInternal();
+  };
 
   // [修改] 初始化用户 (使用 ID)
   useEffect(() => {
@@ -97,6 +112,20 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
         .finally(() => setIsPlayerLoading(false));
     }
   }, [initialUserId, updatePlayer]);
+
+  // [新增] 1s 轮询逻辑
+  useEffect(() => {
+    if (!selectedPlayer) return;
+
+    const timer = setInterval(() => {
+      handleBackgroundRefresh();
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [selectedPlayer, refreshSelectedPlayerInternal]);
+
+
+
 
   // 默认选中第一个
   useEffect(() => {
@@ -136,7 +165,7 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
       }
 
       // 2. [新增] 顺便也刷新一下当前玩家状态
-      //   await refreshSelectedPlayer();
+      await refreshSelectedPlayerInternal();
 
     } catch (e) {
       console.warn("Refresh failed", e);
@@ -233,7 +262,8 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
         isSearching={false}
         isPlayerLoading={isPlayerLoading}
         showOnMobile={!!initialUserId}
-        onRefresh={refreshSelectedPlayer} // [修改] 传入专门的刷新函数
+        onRefresh={handleManualRefresh} // [修改] 传入手动刷新
+        isRefreshing={isPlayerRefreshing} // [New] Pass refresh state
         notFound={notFound} // [新增]
       />
 

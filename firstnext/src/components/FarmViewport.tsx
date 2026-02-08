@@ -9,8 +9,8 @@ import {
   ArrowLeft,
   Bug,
   X,
-  RefreshCw,
-  Skull, // [新增]
+  RotateCw, // [Modify] Change RefreshCw to RotateCw
+  Skull,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type Player, type FollowUser, publicApi } from "@/lib/api";
@@ -45,13 +45,17 @@ function PanelHeader({
   icon: Icon,
   showBack,
   onBack,
-  rightContent
+  rightContent,
+  onRefresh,       // [New]
+  isRefreshing     // [New]
 }: {
   title: string,
   icon: any,
   showBack?: boolean,
   onBack?: () => void,
-  rightContent?: React.ReactNode
+  rightContent?: React.ReactNode,
+  onRefresh?: () => void,  // [New]
+  isRefreshing?: boolean   // [New]
 }) {
   return (
     <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center justify-between px-3 select-none z-20 relative">
@@ -66,6 +70,18 @@ function PanelHeader({
         )}
         <Icon className="w-4 h-4 text-stone-400" />
         <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
+
+        {/* [New] Refresh Button */}
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            disabled={isRefreshing}
+            className="p-1 hover:bg-stone-700 rounded transition-colors text-stone-500 hover:text-white ml-2"
+            title="Refresh Data"
+          >
+            <RotateCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-orange-400' : ''}`} />
+          </button>
+        )}
       </div>
       {rightContent}
     </div>
@@ -87,6 +103,7 @@ interface FarmViewportProps {
   isPlayerLoading: boolean;
   showOnMobile: boolean;
   onRefresh?: () => void;
+  isRefreshing?: boolean; // [New]
   notFound?: boolean; // [新增]
 }
 
@@ -98,6 +115,7 @@ export function FarmViewport({
   isPlayerLoading,
   showOnMobile,
   onRefresh,
+  isRefreshing = false, // [New] destructure with default
   notFound = false // [新增]
 }: FarmViewportProps) {
   const router = useRouter();
@@ -186,23 +204,10 @@ export function FarmViewport({
         icon={Sprout}
         showBack={showOnMobile}
         onBack={() => router.push('/')}
+        onRefresh={onRefresh} // [New] Pass onRefresh
+        isRefreshing={isRefreshing || isLoading} // [New] Pass loading status (background or full)
         rightContent={
           <div className="flex items-center gap-2">
-            <button
-              onClick={onRefresh}
-              disabled={isLoading}
-              className={`
-                  flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono border transition-all 
-                  bg-stone-900 border-stone-700 text-stone-500 
-                  hover:text-stone-300 hover:border-blue-500 hover:text-blue-500
-                  active:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed
-                `}
-              title="Refresh Data"
-            >
-              <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{t('viewport.refresh')}</span>
-            </button>
-
             <button
               onClick={() => setShowDebugSidebar(true)}
               className={`flex items-center gap-1.5 px-2 py-1 text-[9px] font-mono border transition-all bg-stone-900 border-stone-700 text-stone-500 hover:text-stone-300 hover:border-orange-500 hover:text-orange-500`}

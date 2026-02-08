@@ -10,17 +10,14 @@ services:
       NODE_ENV: production
       SERVICE_NAME: auth
       AUTH_PORT: 3002
-      # Ensure these match your main docker-compose network configuration
-      DATABASE_URL: postgresql://farm_user:farm_password_2024@qq-farm-postgres:5432/qq_farm?schema=public
-      REDIS_URL: redis://qq-farm-redis:6379
+      # 连接到 shared infra 中的服务
+      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
+      REDIS_URL: redis://redis:6379
     ports:
       - "3002:3002"
     networks:
       - farm-network
     restart: unless-stopped
-    external_links:
-      - qq-farm-postgres
-      - qq-farm-redis
 
   worker-social:
     build:
@@ -31,19 +28,18 @@ services:
       NODE_ENV: production
       SERVICE_NAME: worker-social
       HOSTNAME: worker-social
-      DATABASE_URL: postgresql://farm_user:farm_password_2024@qq-farm-postgres:5432/qq_farm?schema=public
-      REDIS_URL: redis://qq-farm-redis:6379
+      # 连接到 shared infra 中的服务
+      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
+      REDIS_URL: redis://redis:6379
     command: npm run start:worker-social
     depends_on:
       - auth-server
     networks:
       - farm-network
     restart: unless-stopped
-    external_links:
-      - qq-farm-postgres
-      - qq-farm-redis
 
 networks:
   farm-network:
     external: true
-    name: backend_farm-network
+    # 对应 infra docker-compose 中定义的网络名
+    name: farm-network

@@ -5,6 +5,7 @@ import { createServer } from 'http';
 import prisma from './utils/prisma';
 import { connectRedis } from './utils/redis';
 import { setupWebSocket } from './utils/websocket';
+import { initClickHouseSchema } from './utils/init-clickhouse';
 
 // 引入新拆分的路由
 import gameRoutes from './api/game';
@@ -27,9 +28,10 @@ const PORT = process.env.PORT || 3001;
 
 async function start() {
   await connectRedis();
+  await initClickHouseSchema();
 
   // 初始化或更新作物数据
-  console.log('🌱 Initializing crops...');
+  console.log(' Initializing crops...');
 
   // 循环更新或创建作物配置 (使用导入的 CROPS)
   for (const crop of CROPS) {
@@ -39,7 +41,7 @@ async function start() {
       create: crop,
     });
   }
-  console.log(`✅ Crops data synced (${CROPS.length} types).`);
+  console.log(` Crops data synced (${CROPS.length} types).`);
 
   // 预热排行榜
   await GameService.prewarmLeaderboards();
@@ -50,8 +52,8 @@ async function start() {
 
 
   server.listen(PORT, () => {
-    console.log(`🚀 Backend running on http://localhost:${PORT}`);
-    console.log(`🔌 WebSocket available at ws://localhost:${PORT}/ws`);
+    console.log(` Backend running on http://localhost:${PORT}`);
+    console.log(` WebSocket available at ws://localhost:${PORT}/ws`);
   });
 }
 

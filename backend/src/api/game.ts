@@ -6,6 +6,7 @@ import { authenticateApiKey } from '../middleware/auth';
 import { CROPS } from '../utils/game-keys';
 import { redisClient, getTopPlayers, getLeaderboardCount, KEY_GLOBAL_LOGS, KEY_PLAYER_LOGS_PREFIX } from '../utils/redis';
 import prisma from '../utils/prisma';
+import clickhouse from '../utils/clickhouse'; // [新增] 引入 ClickHouse 客户端
 
 const router: Router = Router();
 
@@ -36,12 +37,8 @@ router.get('/users/:id', async (req, res) => {
   try {
     const userId = req.params.id;
 
-    // 直接使用 GameService 获取状态，因为 Service 层通常会处理 lookup
-    // 如果需要先检查是否存在，可以保留 prisma check，但直接用 ID 查更快
     const player = await GameService.getPlayerState(userId);
 
-    // 如果 Service 返回 null 或者抛错 (取决于你的 Service 实现)
-    // 这里假设 GameService 会抛出 "not found" 如果 Redis/DB 都没有
     res.json(player);
 
   } catch (error: any) {
@@ -154,6 +151,83 @@ router.get('/leaderboard', async (req, res) => {
 
 // 获取日志 (支持 ?playerId=xxx 筛选，以及分页 ?page=1&limit=50)
 router.get('/logs', async (req, res) => {
+  const playerId = req.query.playerId as string;
+  const page = parseInt(req.query.page as string) || 1;
+  const limit = parseInt(req.query.limit as string) || 50;
+  const offset = (page - 1) * limit;
+
+  try {
+    // 1. 准备查询参数
+    const queryParams: Record<string, unknown> = {
+      limit: limit,
+      offset: offset
+    };
+
+    // 2. 构建 WHERE 子句
+    let whereClause = '';
+    if (playerId) {
+      whereClause = 'WHERE player_id = {playerId:String}';
+      queryParams.playerId = playerId;
+    }
+
+    // 3. 并行执行：查询总数 + 查询分页数据
+    const [countResult, logsResult] = await Promise.all([
+      // Query A: 获取总条数
+      clickhouse.query({
+        query: `SELECT count() AS total FROM qq_farm_logs.game_logs ${whereClause}`,
+        query_params: queryParams,
+        format: 'JSONEachRow'
+      }),
+      // Query B: 获取具体日志数据 (按时间倒序)
+      clickhouse.query({
+        query: `
+                    SELECT log 
+                    FROM qq_farm_logs.game_logs 
+                    ${whereClause} 
+                    ORDER BY timestamp DESC 
+                    LIMIT {limit:Int32} OFFSET {offset:Int32}
+                `,
+        query_params: queryParams,
+        format: 'JSONEachRow'
+      })
+    ]);
+
+    // 4. 处理结果
+    // count() 返回的是 [{ total: 123 }]
+    const countRows = await countResult.json() as { total: number | string }[];
+    const total = countRows.length > 0 ? Number(countRows[0].total) : 0;
+
+    // logs 返回的是 [{ log: "{\"action\":...}" }, ...]
+    const logsRaw = await logsResult.json() as { log: string }[];
+
+    // 解析 JSON 字符串还原为对象
+    const logs = logsRaw.map(row => {
+      try {
+        return JSON.parse(row.log);
+      } catch (e) {
+        console.warn('Failed to parse log json:', row.log);
+        return null;
+      }
+    }).filter(Boolean);
+
+    // 5. 返回标准分页结构
+    res.json({
+      data: logs,
+      pagination: {
+        page,
+        limit,
+        total,
+        hasMore: total > (page * limit)
+      }
+    });
+
+  } catch (error) {
+    console.error('Fetch logs from ClickHouse error:', error);
+    res.status(500).json({ error: 'Failed to fetch logs' });
+  }
+});
+
+router.get('/logs1', async (req, res) => {
   const playerId = req.query.playerId as string;
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 50;
