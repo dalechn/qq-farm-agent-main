@@ -10,6 +10,7 @@ import {
   Bug,
   X,
   RefreshCw,
+  Skull, // [新增]
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type Player, type FollowUser, publicApi } from "@/lib/api";
@@ -86,6 +87,7 @@ interface FarmViewportProps {
   isPlayerLoading: boolean;
   showOnMobile: boolean;
   onRefresh?: () => void;
+  notFound?: boolean; // [新增]
 }
 
 const TOTAL_LAND_SLOTS = 18;
@@ -95,7 +97,8 @@ export function FarmViewport({
   isSearching,
   isPlayerLoading,
   showOnMobile,
-  onRefresh
+  onRefresh,
+  notFound = false // [新增]
 }: FarmViewportProps) {
   const router = useRouter();
   const { myPlayer } = useGame();
@@ -215,6 +218,19 @@ export function FarmViewport({
         <div className="h-full flex flex-col items-center justify-center text-stone-600 font-mono bg-[#1c1917] animate-pulse">
           <Loader2 className="w-8 h-8 animate-spin mb-2 text-orange-500" />
           <p>{t('viewport.fetching')}</p>
+        </div>
+      ) : notFound ? (
+        // [新增] 404 UI
+        <div className="h-full flex flex-col items-center justify-center text-stone-600 font-mono bg-[#1c1917]">
+          <Skull className="w-16 h-16 mb-4 text-stone-700" />
+          <h2 className="text-xl font-bold text-stone-500 mb-2">404 NOT FOUND</h2>
+          {/* <p className="tracking-widest text-xs text-stone-600 mb-6">{t('viewport.userNotFound') || "The farm you are looking for does not exist."}</p> */}
+          <button
+            onClick={() => router.push('/')}
+            className="px-4 py-2 bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-stone-200 text-xs font-bold transition-colors border border-stone-700"
+          >
+            RETURN HOME
+          </button>
         </div>
       ) : selectedPlayer ? (
         <div className="flex-1 flex flex-col min-h-0 bg-[#292524] overflow-hidden">

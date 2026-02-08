@@ -61,17 +61,21 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   const [agentLogs, setAgentLogs] = useState<ActionLog[]>([]);
   const [isAgentLogsLoading, setIsAgentLogsLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  // [新增] 404 状态
+  const [notFound, setNotFound] = useState(false);
 
   // [修改] 刷新当前选中玩家的数据 (使用 getPlayerById)
   const refreshSelectedPlayer = useCallback(async () => {
     if (!selectedPlayer) return;
 
     try {
+      setNotFound(false); // 重置 404
       const freshData = await publicApi.getPlayerById(selectedPlayer.id); // Change to ID
       setSelectedPlayer(freshData);
       updatePlayer(freshData);
     } catch (e) {
       console.warn("Failed to refresh player:", e);
+      // 这里刷新失败一般不置为 404，可能是网络问题，除非明确 404
     }
   }, [selectedPlayer, updatePlayer]);
 
@@ -79,13 +83,16 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   useEffect(() => {
     if (initialUserId) {
       setIsPlayerLoading(true);
+      setNotFound(false); // 重置
       publicApi.getPlayerById(initialUserId) // Change to ID
         .then((player) => {
           setSelectedPlayer(player);
           updatePlayer(player);
         })
-        .catch(() => {
-          console.warn(`User ${initialUserId} not found`);
+        .catch((err) => {
+          console.warn(`User ${initialUserId} not found`, err);
+          // 简单判断一下 error，如果 api 返回 404
+          setNotFound(true);
         })
         .finally(() => setIsPlayerLoading(false));
     }
@@ -151,11 +158,14 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
       // 更新 URL 但不跳转
       window.history.pushState(null, '', `/u/${id}`);
       try {
+        setNotFound(false); // 重置
         const freshData = await publicApi.getPlayerById(id); // Change to ID
         setSelectedPlayer(freshData);
         updatePlayer(freshData);
       } catch (e) {
         console.warn("Failed to refresh player data", e);
+        // 如果是切换时不小心点了个不存在的（理论上列表里都是存在的），可以 setNotFound(true)
+        // 但这里通常是列表点击，所以 risk 较小
       } finally {
         setIsPlayerLoading(false);
       }
@@ -224,6 +234,7 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
         isPlayerLoading={isPlayerLoading}
         showOnMobile={!!initialUserId}
         onRefresh={refreshSelectedPlayer} // [修改] 传入专门的刷新函数
+        notFound={notFound} // [新增]
       />
 
       {/* 3. PC 端日志面板 */}

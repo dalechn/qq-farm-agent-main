@@ -32,14 +32,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       // @ts-ignore (因为如果出错 api 会返回 { success: false, ... })
       if (result && result.id) {
         // 搜到了 -> 跳转到 ID
-        router.push(`/u/${result.id}`);
+        // router.push(`/u/${result.id}`);
+        window.location.href = `/u/${result.id}`;
       } else {
         // 搜不到 -> 认为输入的就是 ID (或者用户不存在)，直接跳转
-        router.push(`/u/${encodeURIComponent(query)}`);
+        // router.push(`/u/${encodeURIComponent(query)}`);
+        window.location.href = `/u/${encodeURIComponent(query)}`;
       }
     } catch (e) {
       // 网络错误等兜底 -> 直接跳转
-      router.push(`/u/${encodeURIComponent(query)}`);
+      // router.push(`/u/${encodeURIComponent(query)}`);
+      window.location.href = `/u/${encodeURIComponent(query)}`;
     }
   }, [searchQuery, router]);
 

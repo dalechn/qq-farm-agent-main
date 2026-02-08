@@ -115,7 +115,7 @@ export function DebugSidebar({ isOpen, onClose, currentPlayerId }: DebugSidebarP
       const data = await api.publicApi.getMe(apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders());
 
       // [新增] 获取成功后自动更新 input 里的名字，方便直接跳转
-      if (data.name) setPlayerName(data.name);
+      if (data.id) setPlayerName(data.id);
       return data;
     }),
 

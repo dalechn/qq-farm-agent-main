@@ -203,6 +203,12 @@ export const publicApi = {
       // 这里的 endpoint 对应后端的 /users/:id
       const player = await request<Player>(`/users/${id}`);
 
+      // [修复] Check if the response is actually an error object
+      // @ts-ignore
+      if (player && player.success === false) {
+        throw new Error("Player not found");
+      }
+
       // 如果获取到了玩家信息，补充获取社交统计
       if (player && player.id) {
         try {
