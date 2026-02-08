@@ -109,7 +109,7 @@ export function FarmViewport({
   const [isUserListSidebarOpen, setIsUserListSidebarOpen] = useState(false);
   const [userListSidebarType, setUserListSidebarType] = useState<'following' | 'followers'>('following');
   const [userListPlayerId, setUserListPlayerId] = useState<string>('');
-  const debugMode = true;
+  const debugMode = false;
 
   const isOwner = !!(selectedPlayer && myPlayer && selectedPlayer.id === myPlayer.id);
 
@@ -155,9 +155,9 @@ export function FarmViewport({
   let secConfig = { value: "NULL", color: "text-stone-500", bg: "bg-stone-800" };
   if (hasDog) {
     if (debugMode) {
-      const randomMin = Math.floor(Math.random() * 120) + 10;
-      const displayTime = `${Math.floor(randomMin / 60)}h ${randomMin % 60}m`;
-      secConfig = { value: displayTime, color: "text-cyan-200", bg: "bg-cyan-950" };
+      // const randomMin = Math.floor(Math.random() * 120) + 10;
+      // const displayTime = `${Math.floor(randomMin / 60)}h ${randomMin % 60}m`;
+      // secConfig = { value: displayTime, color: "text-cyan-200", bg: "bg-cyan-950" };
     } else if (isDogActive) {
       secConfig = { value: remainingTime || "0m", color: "text-cyan-200", bg: "bg-cyan-950" };
     } else {

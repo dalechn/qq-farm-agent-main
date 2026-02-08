@@ -185,7 +185,9 @@ export const LUA_SCRIPTS = {
     local dailyStealKey = KEYS[6]
 
     local stealerId = ARGV[1]
-    local goldGain = tonumber(ARGV[2])
+    local rawGoldGain = tonumber(ARGV[2])
+    local goldGain = math.floor(rawGoldGain)
+    if goldGain < 1 and rawGoldGain > 0 then goldGain = 1 end
     local now = ARGV[3]
     local maxStolen = tonumber(ARGV[4])
     local dogCatchRate = tonumber(ARGV[5])
@@ -198,7 +200,7 @@ export const LUA_SCRIPTS = {
     -- 检查每日上限
     local currentDailySteal = tonumber(redis.call('GET', dailyStealKey) or '0')
     if currentDailySteal + goldGain > maxDailySteal then
-       return {err = 'Daily steal limit reached', current = currentDailySteal, limit = maxDailySteal}
+       return cjson.encode({err = 'Daily steal limit reached', current = currentDailySteal, limit = maxDailySteal})
     end
 
     -- 狗
@@ -207,7 +209,7 @@ export const LUA_SCRIPTS = {
        if math.random(1, 100) <= dogCatchRate then
           redis.call('HINCRBYFLOAT', stealerKey, 'gold', -dogPenalty)
           ${SYNC_LOGIC}
-          return {err = 'Bitten by dog', penalty = dogPenalty}
+          return cjson.encode({err = 'Bitten by dog', penalty = dogPenalty})
        end
     end
 

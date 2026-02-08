@@ -21,6 +21,7 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@clickhouse/client": "^1.17.0",
     "@prisma/adapter-pg": "^7.3.0",
     "@prisma/client": "^7.3.0",
     "bullmq": "^5.67.3",

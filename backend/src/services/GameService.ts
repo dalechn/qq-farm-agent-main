@@ -723,6 +723,24 @@ export class GameService {
   }
 
   private static checkLuaError(res: any) {
-    if (res && typeof res === 'object' && res.err) throw new Error(res.err);
+    if (typeof res === 'string' && res.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(res);
+        if (parsed.err) {
+          const error = new Error(parsed.err);
+          Object.assign(error, parsed);
+          throw error;
+        }
+      } catch (e: any) {
+        // If it's the error we threw above, rethrow it
+        if (e instanceof Error && (e as any).err) throw e;
+      }
+    }
+
+    if (res && typeof res === 'object' && res.err) {
+      const error = new Error(res.err);
+      Object.assign(error, res);
+      throw error;
+    }
   }
 }
