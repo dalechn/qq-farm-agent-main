@@ -46,6 +46,9 @@ export function DebugSidebar({ isOpen, onClose, currentPlayerId }: DebugSidebarP
   const [cropType, setCropType] = useState<string>(CROPS[0].type);
   const [playerName, setPlayerName] = useState<string>('TestPlayer');
 
+  // Dog ID State
+  const [dogId, setDogId] = useState<string>('dog_1');
+
   // API Key 状态
   const [apiKey, setApiKey] = useState<string>('');
 
@@ -143,7 +146,7 @@ export function DebugSidebar({ isOpen, onClose, currentPlayerId }: DebugSidebarP
     fertilizerHigh: () => handleApiCall(`Fertilizer High (@ ${position})`, () => api.publicApi.useFertilizer(Number(position), 'high', apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
 
     // [新增] 狗
-    buyDog: () => handleApiCall('Buy Dog', () => api.publicApi.buyDog(apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
+    buyDog: () => handleApiCall(`Buy Dog (${dogId})`, () => api.publicApi.buyDog(dogId, apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
     feedDog: () => handleApiCall('Feed Dog', () => api.publicApi.feedDog(apiKey ? { 'X-API-KEY': apiKey } : api.getAuthHeaders())),
 
     // [新增] 社交
@@ -318,9 +321,19 @@ export function DebugSidebar({ isOpen, onClose, currentPlayerId }: DebugSidebarP
           {/* Watch Dog */}
           <section>
             <div className={groupTitleClass}><Dog className="w-3 h-3" /> Watch Dog</div>
-            <div className="grid grid-cols-2 gap-2">
-              <button className={btnClass} onClick={actions.buyDog}>Buy Dog </button>
-              <button className={btnClass} onClick={actions.feedDog}>Feed Dog </button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  value={dogId}
+                  onChange={(e) => setDogId(e.target.value)}
+                  className="w-full bg-stone-800 border border-stone-700 text-white px-2 py-1 text-xs font-mono rounded focus:border-orange-500 outline-none"
+                  placeholder="Dog ID..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button className={btnClass} onClick={actions.buyDog}>Buy Dog </button>
+                <button className={btnClass} onClick={actions.feedDog}>Feed Dog </button>
+              </div>
             </div>
           </section>
 
