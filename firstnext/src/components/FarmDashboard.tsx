@@ -71,10 +71,17 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   // [新增 1] 创建一个 Ref 来始终追踪最新的 selectedPlayer ID
   // Ref 的值变更是同步的，且不会受闭包影响
   const selectedPlayerIdRef = useRef<string | undefined>(undefined);
+  // [Fix] Add targetPlayerIdRef to track the INTENDED player ID, independent of current state
+  const targetPlayerIdRef = useRef<string | undefined>(undefined);
 
   // [新增 2] 每当 selectedPlayer 变化时，同步更新 Ref
   useEffect(() => {
     selectedPlayerIdRef.current = selectedPlayer?.id;
+    // Sync target ref if it's undefined (initial load) or if we want to keep them aligned
+    // But mainly switchPlayer will drive targetPlayerIdRef
+    if (!targetPlayerIdRef.current && selectedPlayer?.id) {
+      targetPlayerIdRef.current = selectedPlayer.id;
+    }
   }, [selectedPlayer?.id]);
 
   // [修改] 内部刷新函数
@@ -146,6 +153,9 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
     if (initialUserId) {
       setIsPlayerLoading(true);
       setNotFound(false); // 重置
+      // Set target ref for initial load
+      targetPlayerIdRef.current = initialUserId;
+
       publicApi.getPlayerById(initialUserId) // Change to ID
         .then((player) => {
           setSelectedPlayer(player);
@@ -178,6 +188,8 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   useEffect(() => {
     if (!initialUserId && !selectedPlayer && players.length > 0) {
       setSelectedPlayer(players[0]);
+      // Also sync target ref
+      targetPlayerIdRef.current = players[0].id;
     }
   }, [players, selectedPlayer, initialUserId]);
 
@@ -250,19 +262,20 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
       router.push(`/u/${id}`);
       setIsActivityOpen(false);
     } else {
+      // [Fix] 立即更新目标 ID
+      targetPlayerIdRef.current = id;
+
       setIsPlayerLoading(true);
       window.history.pushState(null, '', `/u/${id}`);
 
       try {
         setNotFound(false);
 
-        // 注意：handlePlayerClick 里的乐观更新已经把 selectedPlayerIdRef.current 更新为目标 ID 了
-        // 所以我们在这里请求数据
+        // 注意：这里不再依赖 selectedPlayerIdRef，而是依赖 targetPlayerIdRef
         const freshData = await publicApi.getPlayerById(id);
 
-        // [关键校验]：请求回来后，再次确认用户当前选中的 ID 依然是这个 ID
-        // 防止用户点了 B（开始请求），马上又点了 C。等 B 回来时，Ref 已经是 C 了，B 就会被丢弃。
-        if (freshData.id !== selectedPlayerIdRef.current) {
+        // [关键校验]：请求回来后，再次确认用户当前想要的目标 ID 依然是这个 ID
+        if (freshData.id !== targetPlayerIdRef.current) {
           return;
         }
 
@@ -271,9 +284,8 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
       } catch (e) {
         console.warn("Failed to refresh player data", e);
       } finally {
-        // [优化] 只有当 ID 匹配时才关闭 loading，或者简单粗暴关闭也行，
-        // 但为了防止覆盖 Loading 状态，最好也判断一下，不过通常这里的副作用较小
-        if (id === selectedPlayerIdRef.current) {
+        // [优化] 只有当 ID 匹配时才关闭 loading
+        if (id === targetPlayerIdRef.current) {
           setIsPlayerLoading(false);
         }
       }

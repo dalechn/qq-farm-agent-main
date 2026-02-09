@@ -7,6 +7,7 @@ import prisma from './utils/prisma';
 import { connectRedis } from './utils/redis';
 import socialRoutes from './api/social';
 import playerRoutes from './api/players';
+import { syncFollowsToRedis } from './utils/sync';
 
 dotenv.config();
 
@@ -28,6 +29,9 @@ app.use('/api/auth', playerRoutes);
 async function startServer() {
   // 连接 Redis (因为日志和社交功能需要)
   await connectRedis();
+
+  // 启动时同步关注关系 (非阻塞，让它在后台跑)
+  syncFollowsToRedis().catch(err => console.error('Sync failed:', err));
 
   app.listen(PORT, () => {
     console.log(`🛡️  Auth Server running on http://localhost:${PORT}`);
