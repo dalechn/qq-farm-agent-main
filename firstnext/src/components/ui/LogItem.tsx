@@ -5,9 +5,10 @@ import { useI18n } from '@/lib/i18n';
 
 interface LogItemProps {
     log: ActionLog;
+    onPlayerClick?: (id: string) => void;
 }
 
-export function LogItem({ log }: LogItemProps) {
+export function LogItem({ log, onPlayerClick }: LogItemProps) {
     const { t } = useI18n();
 
     // define styles
@@ -44,6 +45,25 @@ export function LogItem({ log }: LogItemProps) {
         );
     }
 
+    // Helper to render clickable player name
+    const renderPlayer = (name: string, id?: string) => {
+        if (!name) return null;
+        if (!id || !onPlayerClick) {
+            return <span className={playerStyle}>{name}</span>;
+        }
+        return (
+            <span
+                className={playerStyle}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onPlayerClick(id);
+                }}
+            >
+                {name}
+            </span>
+        );
+    };
+
     const { data } = log;
     const cropName = data.cropId ? t(`crops.${data.cropId}`) : data?.cropName;
 
@@ -66,7 +86,7 @@ export function LogItem({ log }: LogItemProps) {
             );
 
         case 'STEAL':
-            const victim = data.victimName ? <span className={playerStyle}>{data.victimName}</span> : <span className={playerStyle}>{t('log.someone')}</span>;
+            const victim = renderPlayer(data.victimName || t('log.someone'), data.victimId);
             return (
                 <span>
                     {t('log.steal')} <span className={highlight}>{cropName}</span>
@@ -77,7 +97,7 @@ export function LogItem({ log }: LogItemProps) {
             );
 
         case 'STOLEN':
-            const thief = <span className={playerStyle}>{data.thiefName || t('log.someone')}</span>;
+            const thief = renderPlayer(data.thiefName || t('log.someone'), data.thiefId);
             return (
                 <span>
                     {t('log.stolenBy')} {thief}
@@ -92,7 +112,7 @@ export function LogItem({ log }: LogItemProps) {
                 pest: t('log.pest')
             };
             const actionText = actionMap[data.type] || t('log.helpDefault');
-            const owner = data.ownerName ? <span className={playerStyle}>{data.ownerName}</span> : null;
+            const owner = renderPlayer(data.ownerName, data.ownerId);
 
             return (
                 <span>
@@ -108,7 +128,7 @@ export function LogItem({ log }: LogItemProps) {
             );
 
         case 'HELPED':
-            const helper = <span className={playerStyle}>{data.helperName || t('log.neighbor')}</span>;
+            const helper = renderPlayer(data.helperName || t('log.neighbor'), data.helperId);
             const helpActionMap: Record<string, string> = {
                 water: t('log.water'),
                 weed: t('log.weed'),
@@ -121,7 +141,7 @@ export function LogItem({ log }: LogItemProps) {
             );
 
         case 'SHOVEL':
-            const shovelOwner = data.ownerName ? <span className={playerStyle}>{data.ownerName}</span> : null;
+            const shovelOwner = renderPlayer(data.ownerName, data.ownerId);
             return (
                 <span>
                     {data.ownerId === log.playerId ? t('log.cleared') : t('log.helpedClear')}
@@ -136,7 +156,7 @@ export function LogItem({ log }: LogItemProps) {
             );
 
         case 'CLEARED':
-            const cleaner = <span className={playerStyle}>{data.helperName || t('log.neighbor')}</span>;
+            const cleaner = renderPlayer(data.helperName || t('log.neighbor'), data.helperId);
             return (
                 <span>
                     {t('log.landClearedBy')} {cleaner}
@@ -169,7 +189,7 @@ export function LogItem({ log }: LogItemProps) {
             );
 
         case 'DOG_CATCH':
-            const caughtThief = <span className={playerStyle}>{data.thiefName || t('log.thief')}</span>;
+            const caughtThief = renderPlayer(data.thiefName || t('log.thief'), data.thiefId);
             return (
                 <span>
                     {t('log.dogCaught')} {caughtThief}!

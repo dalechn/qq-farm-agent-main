@@ -66,6 +66,7 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
 
   /* New State */
   const [isPlayerRefreshing, setIsPlayerRefreshing] = useState(false);
+  const [isLeaderboardRefreshing, setIsLeaderboardRefreshing] = useState(false);
 
   // [修改] 内部刷新函数
   const refreshSelectedPlayerInternal = useCallback(async () => {
@@ -85,13 +86,41 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   // 手动刷新 (带动画)
   const handleManualRefresh = async () => {
     setIsPlayerRefreshing(true);
-    await refreshSelectedPlayerInternal();
+    // 最小动画时间 500ms
+    const minDelay = new Promise(resolve => setTimeout(resolve, 300));
+
+    try {
+      await refreshSelectedPlayerInternal();
+    } catch (e) {
+      console.warn("Manual refresh failed", e);
+    }
+
+    await minDelay;
     setIsPlayerRefreshing(false);
   };
 
-  // 自动刷新 (无动画)
+  // 自动刷新 (无法动)
   const handleBackgroundRefresh = async () => {
-    await refreshSelectedPlayerInternal();
+    if (!selectedPlayer) return;
+
+    try {
+      // 仅获取游戏数据，避免频繁请求社交接口
+      const freshData = await publicApi.getLitePlayer(selectedPlayer.id);
+
+      // 手动合并社交属性，防止覆盖丢失
+      const mergedPlayer = {
+        ...freshData,
+        avatar: selectedPlayer.avatar || freshData.avatar,
+        twitter: selectedPlayer.twitter || freshData.twitter,
+        createdAt: selectedPlayer.createdAt || freshData.createdAt,
+        _count: selectedPlayer._count || freshData._count
+      };
+
+      setSelectedPlayer(mergedPlayer);
+      updatePlayer(mergedPlayer);
+    } catch (e) {
+      // silent fail
+    }
   };
 
   // [修改] 初始化用户 (使用 ID)
@@ -142,6 +171,27 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
       .catch(err => console.warn("Failed to fetch agent logs", err))
       .finally(() => setIsAgentLogsLoading(false));
   };
+
+  // [新增] 1s 日志轮询
+  // useEffect(() => {
+  //   // 自动刷新日志
+  //   const timer = setInterval(() => {
+  //     if (activeLogTab === 'global') {
+  //       refreshLogs();
+  //     } else if (activeLogTab === 'agent' && selectedPlayer) {
+  //       publicApi.getLogs(selectedPlayer.id, 1, 50).then(res => {
+  //         if (res?.data) {
+  //           setAgentLogs(res.data);
+  //         }
+  //       }).catch(err => {
+  //         console.warn("Background agent logs refresh failed", err);
+  //       });
+  //     }
+  //   }, 1000);
+
+  //   return () => clearInterval(timer);
+  // }, [activeLogTab, selectedPlayer, refreshLogs]);
+
 
   useEffect(() => {
     if (activeLogTab === 'agent' && selectedPlayer) {
@@ -214,7 +264,25 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
     switchPlayer(id);
   };
 
-  const currentLogs = activeLogTab === 'global' ? globalLogs : agentLogs;
+  const handleLeaderboardRefresh = async () => {
+    setIsLeaderboardRefreshing(true);
+    const minDelay = new Promise(resolve => setTimeout(resolve, 300));
+
+    try {
+      if (refreshPlayers) {
+        await refreshPlayers();
+      }
+    } catch (e) {
+      console.warn("Leaderboard refresh failed", e);
+    }
+
+    await minDelay;
+    setIsLeaderboardRefreshing(false);
+  };
+
+  const currentLogs = activeLogTab === 'global'
+    ? globalLogs.filter((log: ActionLog) => ['PLANT', 'HARVEST', 'STEAL', 'HELPED', 'SHOVEL', 'CARE'].includes(log.action))
+    : agentLogs;
   const isCurrentLogLoading = activeLogTab === 'global' ? false : isAgentLogsLoading;
 
   if (isLoading && !selectedPlayer && players.length === 0) {
@@ -252,8 +320,8 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
         sortBy={sortBy}       // [新增]
 
         onSortChange={setSortBy} // [新增]
-        onRefresh={refreshPlayers} // [新增]
-        isRefreshing={isRefreshingPlayers} // [新增]
+        onRefresh={handleLeaderboardRefresh} // [修改] 使用带延迟的刷新
+        isRefreshing={isLeaderboardRefreshing || isRefreshingPlayers} // [修改] 结合本地状态和全局状态
       />
 
       {/* 2. 视口 */}

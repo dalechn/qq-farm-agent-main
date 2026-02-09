@@ -161,7 +161,7 @@ export function useGameData(options: UseGameDataOptions = {}) {
 
   const refreshPlayers = useCallback(() => {
     setPlayerPage(1);
-    fetchPlayers(1, false);
+    return fetchPlayers(1, false);
   }, [fetchPlayers]);
 
   const refreshLogs = useCallback(() => {

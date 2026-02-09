@@ -108,7 +108,7 @@ export const ActivityList = forwardRef<VirtuosoHandle, ActivityListProps>(({
                 {log.playerName}
               </span>
               <span className="text-stone-500 group-hover:text-stone-300 transition-colors">
-                <LogItem log={log} />
+                <LogItem log={log} onPlayerClick={onPlayerClick} />
               </span>
             </div>
           </div>

@@ -13,7 +13,7 @@ const crypto = require('crypto'); // 引入 crypto 用于生成唯一ID
 const API_BASE = "http://localhost:3001/api";
 const AUTH_BASE = "http://localhost:3002/api/auth";
 
-const PLAYERS_COUNT = 100; // 目标机器人数量
+const PLAYERS_COUNT = 1000; // 目标机器人数量
 const LOOP_COUNT = 500;    // 每个机器人行动的回合数
 
 // 模拟的作物配置 (需与后端一致)

@@ -236,6 +236,20 @@ export const publicApi = {
     }
   },
 
+  // [新增] 仅获取游戏数据 (Polling 用)
+  getLitePlayer: async (id: string) => {
+    try {
+      const player = await request<Player>(`/users/${id}`);
+      // @ts-ignore
+      if (player && player.success === false) {
+        throw new Error("Player not found");
+      }
+      return player;
+    } catch (error) {
+      throw error;
+    }
+  },
+
   // [新增] 按名字搜索
   searchUserByName: async (name: string) => {
     // 调用 Auth Server 的 /search 接口
