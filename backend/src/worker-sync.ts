@@ -146,6 +146,7 @@ async function processStreamMessages(idToRead: string = '>') {
               level: Number(playerData.level || 1),
               landCount: landCount,
               hasDog: playerData.hasDog === 'true',
+              dogId: playerData.dogId || 'dog_1',
               dogActiveUntil: playerData.dogActiveUntil && Number(playerData.dogActiveUntil) > 0
                 ? new Date(Number(playerData.dogActiveUntil))
                 : null,

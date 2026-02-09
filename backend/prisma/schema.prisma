@@ -25,6 +25,7 @@ model Player {
  
   // 看守狗系统
   hasDog         Boolean   @default(false)
+  dogId          String    @default("dog_1")
   dogActiveUntil DateTime?
 
   avatar    String   @default("https://robohash.org/default.png?set=set1")
