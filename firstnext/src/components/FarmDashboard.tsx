@@ -68,6 +68,15 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   const [isPlayerRefreshing, setIsPlayerRefreshing] = useState(false);
   const [isLeaderboardRefreshing, setIsLeaderboardRefreshing] = useState(false);
 
+  // [新增 1] 创建一个 Ref 来始终追踪最新的 selectedPlayer ID
+  // Ref 的值变更是同步的，且不会受闭包影响
+  const selectedPlayerIdRef = useRef<string | undefined>(undefined);
+
+  // [新增 2] 每当 selectedPlayer 变化时，同步更新 Ref
+  useEffect(() => {
+    selectedPlayerIdRef.current = selectedPlayer?.id;
+  }, [selectedPlayer?.id]);
+
   // [修改] 内部刷新函数
   const refreshSelectedPlayerInternal = useCallback(async () => {
     if (!selectedPlayer) return;
@@ -101,13 +110,22 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
 
   // 自动刷新 (无法动)
   const handleBackgroundRefresh = async () => {
-    if (!selectedPlayer) return;
+    // 如果没有选人，或者 Ref 里没 ID，直接不跑
+    if (!selectedPlayer || !selectedPlayerIdRef.current) return;
+
+    // 保存发起请求时的 ID，用于双重校验（可选，但用 Ref 校验已足够）
+    const currentRequestId = selectedPlayer.id;
 
     try {
-      // 仅获取游戏数据，避免频繁请求社交接口
-      const freshData = await publicApi.getLitePlayer(selectedPlayer.id);
+      const freshData = await publicApi.getLitePlayer(currentRequestId);
 
-      // 手动合并社交属性，防止覆盖丢失
+      // [关键校验]：数据回来时，检查当前选中的人是不是还是这个人
+      if (freshData.id !== selectedPlayerIdRef.current) {
+        // console.log(`Discarded stale background update for ${freshData.id}`);
+        return; // 如果 ID 对不上，说明用户已经切走了，丢弃这次更新
+      }
+
+      // 手动合并社交属性
       const mergedPlayer = {
         ...freshData,
         avatar: selectedPlayer.avatar || freshData.avatar,
@@ -229,24 +247,35 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
   // [修改] 切换玩家逻辑 (使用 ID)
   const switchPlayer = async (id: string) => {
     if (window.innerWidth < 1024) {
-      // 路由跳转使用 ID
       router.push(`/u/${id}`);
       setIsActivityOpen(false);
     } else {
       setIsPlayerLoading(true);
-      // 更新 URL 但不跳转
       window.history.pushState(null, '', `/u/${id}`);
+
       try {
-        setNotFound(false); // 重置
-        const freshData = await publicApi.getPlayerById(id); // Change to ID
+        setNotFound(false);
+
+        // 注意：handlePlayerClick 里的乐观更新已经把 selectedPlayerIdRef.current 更新为目标 ID 了
+        // 所以我们在这里请求数据
+        const freshData = await publicApi.getPlayerById(id);
+
+        // [关键校验]：请求回来后，再次确认用户当前选中的 ID 依然是这个 ID
+        // 防止用户点了 B（开始请求），马上又点了 C。等 B 回来时，Ref 已经是 C 了，B 就会被丢弃。
+        if (freshData.id !== selectedPlayerIdRef.current) {
+          return;
+        }
+
         setSelectedPlayer(freshData);
         updatePlayer(freshData);
       } catch (e) {
         console.warn("Failed to refresh player data", e);
-        // 如果是切换时不小心点了个不存在的（理论上列表里都是存在的），可以 setNotFound(true)
-        // 但这里通常是列表点击，所以 risk 较小
       } finally {
-        setIsPlayerLoading(false);
+        // [优化] 只有当 ID 匹配时才关闭 loading，或者简单粗暴关闭也行，
+        // 但为了防止覆盖 Loading 状态，最好也判断一下，不过通常这里的副作用较小
+        if (id === selectedPlayerIdRef.current) {
+          setIsPlayerLoading(false);
+        }
       }
     }
   };

@@ -194,6 +194,11 @@ export function LogItem({ log, onPlayerClick }: LogItemProps) {
                 <span>
                     {t('log.dogCaught')} {caughtThief}!
                     <span className="text-green-400 font-bold ml-1">{t('log.goodDog')}</span>
+                    {data.compensation && (
+                        <span className="text-yellow-400 font-bold ml-1">
+                            +{data.compensation} {t('land.gold')}
+                        </span>
+                    )}
                 </span>
             );
 

@@ -106,6 +106,8 @@ export interface Crop {
 }
 
 export interface DogShopItem {
+  id: string;
+  name: string;
   price: number;
   foodPrice: number;
   foodDuration: number;
@@ -123,7 +125,7 @@ export interface FertilizerShopItem {
 
 export interface ShopData {
   crops: Crop[];
-  dog: DogShopItem;
+  dogs: DogShopItem[];
   fertilizers: FertilizerShopItem[];
 }
 
@@ -347,10 +349,11 @@ export const publicApi = {
     });
   },
 
-  buyDog: async (headers = getAuthHeaders()) => {
+  buyDog: async (dogId: string, headers = getAuthHeaders()) => {
     return request<{ success: boolean; message?: string }>('/dog/buy', {
       method: 'POST',
       headers,
+      body: JSON.stringify({ dogId }),
     });
   },
 

@@ -83,13 +83,35 @@ export const GAME_CONFIG = {
   },
 
   // 看守狗配置
-  DOG: {
-    PRICE: 2000,          // 买狗价格
-    FOOD_PRICE: 200,      // 狗粮价格
-    FOOD_DURATION: 86400, // 持续时间(秒)
-    CATCH_RATE: 40,       // 咬人几率 (40%)
-    BITE_PENALTY: 200     // 被咬罚款 (200金币)
-  },
+  DOG: [
+    {
+      id: 'dog_1',
+      name: '中华田园犬',
+      PRICE: 2000,          // 买狗价格
+      FOOD_PRICE: 200,      // 狗粮价格
+      FOOD_DURATION: 86400, // 持续时间(秒)
+      CATCH_RATE: 20,       // 咬人几率 (20%)
+      BITE_PENALTY: 50      // 被咬罚款
+    },
+    {
+      id: 'dog_2',
+      name: '哈士奇',
+      PRICE: 5000,
+      FOOD_PRICE: 500,
+      FOOD_DURATION: 86400,
+      CATCH_RATE: 40,
+      BITE_PENALTY: 150
+    },
+    {
+      id: 'dog_3',
+      name: '藏獒',
+      PRICE: 10000,
+      FOOD_PRICE: 1000,
+      FOOD_DURATION: 86400,
+      CATCH_RATE: 60,
+      BITE_PENALTY: 330
+    }
+  ],
 
   BASE_RATES: {
     STEAL_PENALTY: 0.1,  // 被偷一次扣10%

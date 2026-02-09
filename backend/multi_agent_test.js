@@ -159,10 +159,10 @@ class FarmAgent {
 
   // --- 资产操作方法 ---
 
-  async buyDog() {
-    const res = await this.request('/dog/buy', 'POST', {}, API_BASE);
+  async buyDog(dogId = 'dog_1') {
+    const res = await this.request('/dog/buy', 'POST', { dogId }, API_BASE);
     if (res && res.success) {
-      this.log(`🐕 成功购买了看门狗！`);
+      this.log(`🐕 成功购买了看门狗 (${dogId})！`);
       this.hasDog = true;
       return true;
     }
@@ -285,9 +285,9 @@ class FarmAgent {
 
   // --- 财富管理子程序 ---
   async doWealthManagement() {
-    // 1. 狗狗管理
-    if (!this.hasDog && this.gold > 600) {
-      await this.buyDog();
+    // 1. 狗狗管理 (dog_1 price is 2000)
+    if (!this.hasDog && this.gold > 2500) {
+      await this.buyDog('dog_1');
       return;
     }
 

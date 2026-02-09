@@ -3,7 +3,7 @@
 import { Router } from 'express';
 import { GameService } from '../services/GameService';
 import { authenticateApiKey } from '../middleware/auth';
-import { CROPS } from '../utils/game-keys';
+import { CROPS, GAME_CONFIG } from '../utils/game-keys';
 import { redisClient, getTopPlayers, getLeaderboardCount, KEY_GLOBAL_LOGS, KEY_PLAYER_LOGS_PREFIX } from '../utils/redis';
 import prisma from '../utils/prisma';
 import clickhouse from '../utils/clickhouse'; // [新增] 引入 ClickHouse 客户端
@@ -272,17 +272,18 @@ router.get('/logs1', async (req, res) => {
 // 2. 基础配置
 // ==========================================
 router.get('/crops', (req, res) => {
-  const { GAME_CONFIG } = require('../utils/game-keys');
 
   res.json({
     crops: CROPS,
-    dog: {
-      price: GAME_CONFIG.DOG.PRICE,
-      foodPrice: GAME_CONFIG.DOG.FOOD_PRICE,
-      foodDuration: GAME_CONFIG.DOG.FOOD_DURATION,
-      catchRate: GAME_CONFIG.DOG.CATCH_RATE,
-      bitePenalty: GAME_CONFIG.DOG.BITE_PENALTY
-    },
+    dogs: GAME_CONFIG.DOG.map(d => ({
+      id: d.id,
+      name: d.name,
+      price: d.PRICE,
+      foodPrice: d.FOOD_PRICE,
+      foodDuration: d.FOOD_DURATION,
+      catchRate: d.CATCH_RATE,
+      bitePenalty: d.BITE_PENALTY
+    })),
     fertilizers: [
       {
         type: 'normal',
@@ -403,7 +404,8 @@ router.post('/fertilize', authenticateApiKey, async (req: any, res) => {
 // 买狗
 router.post('/dog/buy', authenticateApiKey, async (req: any, res) => {
   try {
-    const result = await GameService.buyOrFeedDog(req.playerId, false);
+    const { dogId } = req.body;
+    const result = await GameService.buyOrFeedDog(req.playerId, false, dogId);
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ error: error.message });

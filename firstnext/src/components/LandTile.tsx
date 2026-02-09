@@ -221,9 +221,9 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
     switch (land.landType) {
       case 'red':
         styles = {
-          bgEmpty: "bg-[#7f1d1d]",
-          bgPlanted: "bg-[#450a0a]",
-          border: "border-[#991b1b]"
+          bgEmpty: "bg-[#663c3c]",
+          bgPlanted: "bg-[#3f2222]",
+          border: "border-[#7f4f4f]"
         };
         break;
       case 'black':
@@ -343,6 +343,23 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
             <span className="font-bold">x{land.remainingHarvests}</span>
           </div>
         )}
+
+        {/* 3. 土地类型 (显示在下方) */}
+        <div className={`
+            flex items-center gap-1
+            px-1.5 py-0.5
+            text-[8px] font-bold font-mono leading-none
+            shadow-[2px_2px_0_0_rgba(0,0,0,0.25)]
+            opacity-0 group-hover:opacity-100 transition-opacity duration-200
+            border
+            ${land.landType === 'red' ? 'bg-red-950/80 border-red-500/50 text-red-200' :
+            land.landType === 'black' ? 'bg-stone-950/80 border-stone-600 text-stone-300' :
+              land.landType === 'gold' ? 'bg-yellow-950/80 border-yellow-500/50 text-yellow-200' :
+                'bg-stone-800/80 border-stone-500/50 text-stone-300'
+          }
+          `}>
+          <span>{t(`land.${land.landType}`)}</span>
+        </div>
       </div>
 
       {/* --- 右上角状态区 (z-40, 添加 leading-none) --- */}
@@ -379,7 +396,7 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
             text-[8px] font-bold font-mono text-white shadow-[2px_2px_0_0_rgba(0,0,0,0.25)] leading-none whitespace-nowrap
           ">
             <Skull className="w-2.5 h-2.5" />
-            <span>-{land.stolenCount}</span>
+            <span>-{land.stolenCount * 10}%</span>
           </div>
         )}
       </div>
@@ -431,6 +448,6 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
           </>
         )}
       </div>
-    </div>
+    </div >
   );
 }

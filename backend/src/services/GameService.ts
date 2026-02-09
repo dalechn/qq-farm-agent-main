@@ -362,7 +362,12 @@ export class GameService {
     const crop = CROPS.find(c => c.type === cropId);
     const stealAmount = Math.max(1, Math.floor((crop!.sellPrice || 10) * 0.1));
 
-    const { CATCH_RATE, BITE_PENALTY } = GAME_CONFIG.DOG;
+    const victimKey = KEYS.PLAYER(victimId);
+    let dogId = await redisClient.hGet(victimKey, 'dogId');
+    if (!dogId) dogId = 'dog_1'; // Default to first dog
+
+    const dogConfig = GAME_CONFIG.DOG.find(d => d.id === dogId) || GAME_CONFIG.DOG[0];
+    const { CATCH_RATE, BITE_PENALTY } = dogConfig;
 
     try {
       const res = await redisClient.eval(LUA_SCRIPTS.STEAL, {
@@ -441,8 +446,13 @@ export class GameService {
 
     } catch (e: any) {
       if (e.message === 'Bitten by dog') {
+        // [修复] 获取实际扣除的金额 (penalty 字段)
+        const actualPenalty = Number(e.penalty || 0);
+
         // 狗咬了，扣钱了，更新排行榜
         await this.syncPlayerRank(stealerId);
+        // [新增] 受害者获得了赔偿金，也需要同步排行榜
+        await this.syncPlayerRank(victimId);
 
         const stealerName = await this.getPlayerName(stealerId);
         broadcast({
@@ -450,9 +460,9 @@ export class GameService {
           action: 'DOG_BITE',
           playerId: stealerId,
           playerName: stealerName,
-          details: `Bitten by dog! Lost ${BITE_PENALTY} gold.`,
+          details: `Bitten by dog! Lost ${actualPenalty} gold.`,
           data: {
-            penalty: BITE_PENALTY,
+            penalty: actualPenalty,
             victimId
           }
         });
@@ -463,15 +473,16 @@ export class GameService {
           action: 'DOG_CATCH',
           playerId: victimId,
           playerName: victimName,
-          details: `Dog caught ${stealerName}!`,
+          details: `Dog caught ${stealerName}! Earned ${actualPenalty} gold.`,
           data: {
-            penalty: BITE_PENALTY,
+            penalty: actualPenalty,
+            compensation: actualPenalty,
             thiefId: stealerId,
             thiefName: stealerName
           }
         }, false);
 
-        return { success: false, reason: 'bitten', penalty: BITE_PENALTY };
+        return { success: false, reason: 'bitten', penalty: actualPenalty };
       }
 
       if (e.message === 'Daily steal limit reached') {
@@ -699,11 +710,25 @@ export class GameService {
     return { success: true, matureAt: newMatureAt };
   }
 
-  static async buyOrFeedDog(playerId: string, isFeed: boolean = false) {
+  static async buyOrFeedDog(playerId: string, isFeed: boolean = false, dogId: string = 'dog_1') {
     await this.ensurePlayerLoaded(playerId);
-    const { PRICE, FOOD_PRICE, FOOD_DURATION } = GAME_CONFIG.DOG;
+
+    // Find dog config
+    const dogConfig = GAME_CONFIG.DOG.find(d => d.id === dogId) || GAME_CONFIG.DOG[0];
+
+    const { PRICE, FOOD_PRICE, FOOD_DURATION } = dogConfig;
     const price = isFeed ? FOOD_PRICE : PRICE;
-    const res = await redisClient.eval(LUA_SCRIPTS.BUY_OR_FEED_DOG, { keys: [KEYS.PLAYER(playerId), KEYS.MQ_GAME_EVENTS], arguments: [price.toString(), FOOD_DURATION.toString(), Date.now().toString(), isFeed ? 'true' : 'false'] });
+
+    const res = await redisClient.eval(LUA_SCRIPTS.BUY_OR_FEED_DOG, {
+      keys: [KEYS.PLAYER(playerId), KEYS.MQ_GAME_EVENTS],
+      arguments: [
+        price.toString(),
+        FOOD_DURATION.toString(),
+        Date.now().toString(),
+        isFeed ? 'true' : 'false',
+        dogId
+      ]
+    });
     this.checkLuaError(res);
 
     await this.syncPlayerRank(playerId); // 消耗金币

@@ -174,13 +174,13 @@ export const LUA_SCRIPTS = {
   `,
 
   // ==========================================
-  // 3. 偷菜 (Steal)
+  // 3. 偷菜 (Steal) - [已修改] 包含防负数和补偿逻辑
   // ==========================================
   STEAL: `
     local landKey = KEYS[1]
     local stealerKey = KEYS[2]
     local thievesKey = KEYS[3]
-    local streamKey = KEYS[4] -- [修改] 
+    local streamKey = KEYS[4] 
     local victimKey = KEYS[5]
     local dailyStealKey = KEYS[6]
 
@@ -203,13 +203,30 @@ export const LUA_SCRIPTS = {
        return cjson.encode({err = 'Daily steal limit reached', current = currentDailySteal, limit = maxDailySteal})
     end
 
-    -- 狗
+    -- 狗的逻辑 [修改]
     local dogTime = tonumber(redis.call('HGET', victimKey, 'dogActiveUntil') or '0')
     if tonumber(now) < dogTime then
        if math.random(1, 100) <= dogCatchRate then
-          redis.call('HINCRBYFLOAT', stealerKey, 'gold', -dogPenalty)
-          ${SYNC_LOGIC}
-          return cjson.encode({err = 'Bitten by dog', penalty = dogPenalty})
+          
+          -- 1. 获取小偷当前金币
+          local currentGold = tonumber(redis.call('HGET', stealerKey, 'gold') or '0')
+          
+          -- 2. 计算实际扣除金额 (最多扣到0)
+          local actualPenalty = dogPenalty
+          if currentGold < dogPenalty then
+             actualPenalty = currentGold
+          end
+          
+          -- 3. 扣除小偷金币 (如果 actualPenalty > 0)
+          if actualPenalty > 0 then
+             redis.call('HINCRBYFLOAT', stealerKey, 'gold', -actualPenalty)
+             -- 4. 补偿给狗的主人 (受害者)
+             redis.call('HINCRBYFLOAT', victimKey, 'gold', actualPenalty)
+          end
+
+          ${SYNC_LOGIC} -- 同步小偷状态
+
+          return cjson.encode({err = 'Bitten by dog', penalty = actualPenalty})
        end
     end
 
@@ -243,7 +260,6 @@ export const LUA_SCRIPTS = {
         redis.call('XADD', streamKey, '*', 'playerId', victimRealId, 'action', victimAction, 'ts', now)
     end
     
-    -- 土地脏数据由 victim 的同步逻辑处理
     return {stolenCount + 1}
   `,
 
@@ -403,6 +419,7 @@ export const LUA_SCRIPTS = {
     local duration = tonumber(ARGV[2]) * 1000
     local now = tonumber(ARGV[3])
     local isFeed = ARGV[4] == 'true'
+    local dogId = ARGV[5] 
     
     local actionName = 'DOG'
 
@@ -419,7 +436,12 @@ export const LUA_SCRIPTS = {
     local newExpire = 0
     if isFeed and currentExpire > now then newExpire = currentExpire + duration else newExpire = now + duration end
 
-    redis.call('HMSET', playerKey, 'hasDog', 'true', 'dogActiveUntil', newExpire)
+    if isFeed then
+        redis.call('HMSET', playerKey, 'hasDog', 'true', 'dogActiveUntil', newExpire)
+    else
+        redis.call('HMSET', playerKey, 'hasDog', 'true', 'dogActiveUntil', newExpire, 'dogId', dogId)
+    end
+    
     ${SYNC_LOGIC}
     return {newExpire}
   `,

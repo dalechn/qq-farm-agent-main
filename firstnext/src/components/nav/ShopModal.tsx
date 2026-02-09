@@ -12,8 +12,9 @@ import {
   Zap,
   Hammer
 } from "lucide-react";
-import { type Crop, type ShopData } from "@/lib/api";
+import { type Crop, type ShopData, publicApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
+import { useToast } from '@/components/ui/Toast';
 import { IconSeed, CROP_ICONS } from "@/components/ui/CropIcons";
 
 
@@ -36,7 +37,27 @@ type TabType = 'seeds' | 'items';
 
 export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
   const { t } = useI18n();
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<TabType>('seeds');
+  const [buyingDogId, setBuyingDogId] = useState<string | null>(null);
+
+  const handleBuyDog = async (dogId: string) => {
+    if (buyingDogId) return;
+    setBuyingDogId(dogId);
+    try {
+      const res = await publicApi.buyDog(dogId);
+      if (res.success) {
+        toast(t('toast.dogBought'), 'success');
+        onClose();
+      } else {
+        toast(res.message || t('toast.actionFailed'), 'error');
+      }
+    } catch (e: any) {
+      toast(e.message || t('toast.actionFailed'), 'error');
+    } finally {
+      setBuyingDogId(null);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -221,45 +242,61 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
               {activeTab === 'items' && (
                 <div className="animate-in fade-in duration-300">
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* Dog Item */}
-                    <div className="bg-[#292524] border-2 border-[#44403c] hover:border-blue-500/50 hover:bg-[#322c2b] transition-all duration-200 shadow-sm flex flex-col">
-                      <div className="flex p-3 gap-3">
-                        <div className="w-16 h-16 bg-[#1c1917] border-2 border-blue-500/30 flex items-center justify-center">
-                          <Dog className="w-10 h-10 text-blue-400" />
-                        </div>
-                        <div className="flex-1 flex flex-col justify-between">
-                          <div>
-                            <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide">{t('shop.dog.title')}</h3>
-                            <p className="text-[10px] text-stone-400 mt-1">{t('shop.dog.description')}</p>
+                    {/* Dogs */}
+                    {shopData.dogs.map((dog) => (
+                      <div key={dog.id} className="bg-[#292524] border-2 border-[#44403c] hover:border-blue-500/50 hover:bg-[#322c2b] transition-all duration-200 shadow-sm flex flex-col">
+                        <div className="flex p-3 gap-3">
+                          <div className="w-16 h-16 bg-[#1c1917] border-2 border-blue-500/30 flex items-center justify-center">
+                            <Dog className="w-10 h-10 text-blue-400" />
+                          </div>
+                          <div className="flex-1 flex flex-col justify-between">
+                            <div>
+                              <h3 className="font-bold text-sm text-stone-100 uppercase tracking-wide">{t(`shop.dog.${dog.id}`)}</h3>
+                              <p className="text-[10px] text-stone-400 mt-1">{t('shop.dog.description')}</p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-px bg-[#1c1917] border-y border-[#44403c]">
-                        <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                          <span className="text-[9px] text-stone-500 uppercase">{t('shop.dog.buy')}</span>
-                          <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
-                            <Coins className="w-3 h-3 text-blue-500/50" />
-                            {shopData.dog.price}
-                          </span>
+                        <div className="grid grid-cols-2 gap-px bg-[#1c1917] border-y border-[#44403c]">
+                          <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                            <span className="text-[9px] text-stone-500 uppercase">{t('shop.dog.buy')}</span>
+                            <span className="text-blue-300 font-bold text-xs flex items-center gap-1">
+                              <Coins className="w-3 h-3 text-blue-500/50" />
+                              {dog.price}
+                            </span>
+                          </div>
+                          <div className="bg-[#262626] p-2 flex flex-col gap-1">
+                            <span className="text-[9px] text-stone-500 uppercase">{t('shop.dog.food')}</span>
+                            <span className="text-green-300 font-bold text-xs flex items-center gap-1">
+                              <Coins className="w-3 h-3 text-green-500/50" />
+                              {dog.foodPrice}
+                            </span>
+                          </div>
                         </div>
-                        <div className="bg-[#262626] p-2 flex flex-col gap-1">
-                          <span className="text-[9px] text-stone-500 uppercase">{t('shop.dog.food')}</span>
-                          <span className="text-green-300 font-bold text-xs flex items-center gap-1">
-                            <Coins className="w-3 h-3 text-green-500/50" />
-                            {shopData.dog.foodPrice}
-                          </span>
+                        <div className="p-2 bg-[#292524] text-[10px] text-stone-400 space-y-0.5">
+                          <div>{t('shop.dog.catchRate')}: {dog.catchRate}%</div>
+                          <div>{t('shop.dog.foodDuration')}: {Math.floor(dog.foodDuration / 3600)}h</div>
+                          <div className="flex items-center gap-1">
+                            {t('shop.dog.bitePenalty')}:
+                            <Coins className="w-3 h-3 text-yellow-500" />
+                            <span className="text-stone-300 font-bold">{dog.bitePenalty}</span>
+                          </div>
+                        </div>
+                        <div className="p-2 border-t border-[#44403c]">
+                          <button
+                            onClick={() => handleBuyDog(dog.id)}
+                            disabled={buyingDogId === dog.id}
+                            className="w-full py-1 bg-blue-900/50 hover:bg-blue-800 text-blue-200 text-xs font-bold uppercase tracking-wider border border-blue-700/50 rounded-sm transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            {buyingDogId === dog.id ? (
+                              <RefreshCw className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <Coins className="w-3 h-3" />
+                            )}
+                            {t('shop.dog.buy')}
+                          </button>
                         </div>
                       </div>
-                      <div className="p-2 bg-[#292524] text-[10px] text-stone-400 space-y-0.5">
-                        <div>{t('shop.dog.catchRate')}: {shopData.dog.catchRate}%</div>
-                        <div>{t('shop.dog.foodDuration')}: {Math.floor(shopData.dog.foodDuration / 3600)}h</div>
-                        <div className="flex items-center gap-1">
-                          {t('shop.dog.bitePenalty')}:
-                          <Coins className="w-3 h-3 text-yellow-500" />
-                          <span className="text-stone-300 font-bold">{shopData.dog.bitePenalty}</span>
-                        </div>
-                      </div>
-                    </div>
+                    ))}
 
                     {/* Fertilizers */}
                     {shopData.fertilizers.map((fertilizer) => (
