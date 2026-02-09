@@ -2,9 +2,9 @@
  * Multi Agent Test - Node.js Version (Robust)
  * * Usage: node multi_agent_test.js
  * * 核心逻辑 (Update):
- * 1. 初始化：使用唯一Hash生成名字，循环注册直到满员。
+ * 1. 初始化：加载远程配置，使用唯一Hash生成名字，循环注册直到满员。
  * 2. 社交构建：全员互粉，确保构建完整的 P2P 社交图谱。
- * 3. 游戏循环：基于最新的好友列表进行偷菜/助人。
+ * 3. 游戏循环：基于最新的好友列表进行偷菜/助人/资产增值。
  */
 
 const crypto = require('crypto'); // 引入 crypto 用于生成唯一ID
@@ -13,18 +13,11 @@ const crypto = require('crypto'); // 引入 crypto 用于生成唯一ID
 const API_BASE = "http://localhost:3001/api";
 const AUTH_BASE = "http://localhost:3002/api/auth";
 
-const PLAYERS_COUNT = 1000; // 目标机器人数量
+const PLAYERS_COUNT = 3000; // 目标机器人数量
 const LOOP_COUNT = 500;    // 每个机器人行动的回合数
 
-// 模拟的作物配置 (需与后端一致)
-const CROPS_CONFIG = [
-  { type: "radish", name: "白萝卜", levelReq: 0, seedPrice: 10, landReq: "normal" },
-  { type: "carrot", name: "胡萝卜", levelReq: 1, seedPrice: 20, landReq: "normal" },
-  { type: "corn", name: "玉米", levelReq: 3, seedPrice: 50, landReq: "normal" },
-  { type: "potato", name: "土豆", levelReq: 5, seedPrice: 150, landReq: "normal" },
-  { type: "strawberry", name: "草莓", levelReq: 10, seedPrice: 80, landReq: "red" },
-  { type: "watermelon", name: "西瓜", levelReq: 20, seedPrice: 150, landReq: "red" }
-];
+// [修改] 全局作物配置 (初始为空，启动时从后端获取)
+let CROPS_CONFIG = [];
 
 // ================= 工具函数 =================
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -37,6 +30,28 @@ const generateUniqueName = (index) => {
   return `Bot_${index}_${hash}`;
 };
 
+// [新增] 从服务器获取最新的游戏配置 (作物列表等)
+async function fetchGameConfig() {
+  console.log("⏳ 正在从服务器获取最新的作物配置...");
+  try {
+    const res = await fetch(`${API_BASE}/crops`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && Array.isArray(data.crops)) {
+        CROPS_CONFIG = data.crops;
+        console.log(`✅ 成功加载配置: 获取到 ${CROPS_CONFIG.length} 种作物数据`);
+        // 可选: 打印一下作物名称确认
+        // console.log("   作物列表:", CROPS_CONFIG.map(c => c.name).join(", "));
+        return true;
+      }
+    }
+    console.error(`❌ 获取配置失败: ${res.status} ${res.statusText}`);
+  } catch (e) {
+    console.error(`❌ 获取配置异常 (请确认后端服务已启动):`, e.message);
+  }
+  return false;
+}
+
 // ================= Agent 类 =================
 class FarmAgent {
   constructor(name) {
@@ -48,6 +63,10 @@ class FarmAgent {
     this.gold = 0;
     this.level = 1;
     this.exp = 0;
+
+    // 狗狗状态
+    this.hasDog = false;
+    this.dogActiveUntil = null;
   }
 
   log(message) {
@@ -72,9 +91,6 @@ class FarmAgent {
       const isJson = res.headers.get("content-type")?.includes("application/json");
 
       if (!res.ok) {
-        // 调试用：如果报错，可以尝试读取错误文本
-        // const txt = await res.text();
-        // console.error(`Req Failed: ${baseUrl}${endpoint} ${res.status}`, txt);
         return null;
       }
       return isJson ? await res.json() : null;
@@ -135,7 +151,49 @@ class FarmAgent {
       this.gold = data.gold;
       this.level = data.level || 1;
       this.exp = data.exp || 0;
+      // 更新狗的状态
+      this.hasDog = !!data.hasDog;
+      this.dogActiveUntil = data.dogActiveUntil ? new Date(data.dogActiveUntil) : null;
     }
+  }
+
+  // --- 资产操作方法 ---
+
+  async buyDog() {
+    const res = await this.request('/dog/buy', 'POST', {}, API_BASE);
+    if (res && res.success) {
+      this.log(`🐕 成功购买了看门狗！`);
+      this.hasDog = true;
+      return true;
+    }
+    return false;
+  }
+
+  async feedDog() {
+    const res = await this.request('/dog/feed', 'POST', {}, API_BASE);
+    if (res && res.success) {
+      this.log(`🍖 喂食了狗狗，它现在精力充沛！`);
+      return true;
+    }
+    return false;
+  }
+
+  async expandLand() {
+    const res = await this.request('/expand', 'POST', {}, API_BASE);
+    if (res && res.success) {
+      this.log(`🏡 扩建成功！当前拥有 ${res.landCount} 块土地`);
+      return true;
+    }
+    return false;
+  }
+
+  async upgradeLand(position) {
+    const res = await this.request('/upgrade-land', 'POST', { position }, API_BASE);
+    if (res && res.success) {
+      this.log(`✨ 土地[${position}] 升级为 ${res.newType}`);
+      return true;
+    }
+    return false;
   }
 
   // ================= 核心行动逻辑 =================
@@ -145,7 +203,7 @@ class FarmAgent {
     // 1. 刷新状态
     await this.refreshState();
 
-    // 2. 刷新好友 (如果列表为空，强制刷新；否则低概率刷新)
+    // 2. 刷新好友
     if (this.friends.length === 0 || Math.random() < 0.05) {
       await this.fetchFriends();
     }
@@ -171,14 +229,29 @@ class FarmAgent {
     // [种植]
     const emptyLands = this.lands.filter(l => l.status === "empty");
     if (emptyLands.length > 0) {
-      const availableCrops = CROPS_CONFIG.filter(c => c.levelReq <= this.level && c.seedPrice <= this.gold);
+      // [修改] 使用全局配置 CROPS_CONFIG
+      // 注意：后端返回的字段通常是 requiredLevel 和 requiredLandType，而不是之前的 levelReq/landReq
+      // 根据你的后端 game-keys.ts，字段名应该是: requiredLevel, requiredLandType, seedPrice
+      const availableCrops = CROPS_CONFIG.filter(c =>
+        (c.requiredLevel || c.levelReq || 0) <= this.level &&
+        c.seedPrice <= this.gold
+      );
+
       if (availableCrops.length > 0) {
         const targetLand = randomChoice(emptyLands);
         const cropToPlant = randomChoice(availableCrops);
-        const res = await this.request('/plant', 'POST', { position: targetLand.position, cropType: cropToPlant.type });
-        if (res && res.success) {
-          this.gold -= cropToPlant.seedPrice;
-          this.log(`种植了 ${cropToPlant.name}`);
+
+        // 检查土地需求
+        const reqLand = cropToPlant.requiredLandType || cropToPlant.landReq || 'normal';
+        // 简单逻辑：如果是高级作物但地是普通的，则跳过 (为了简化，这里只做简单判断)
+        if (reqLand !== 'normal' && targetLand.landType === 'normal') {
+          // pass
+        } else {
+          const res = await this.request('/plant', 'POST', { position: targetLand.position, cropType: cropToPlant.type });
+          if (res && res.success) {
+            this.gold -= cropToPlant.seedPrice;
+            this.log(`种植了 ${cropToPlant.name}`);
+          }
         }
       }
     }
@@ -201,6 +274,44 @@ class FarmAgent {
       } else {
         // >>> 40% 概率：偷菜 <<<
         await this.doStealRoutine(this.friends);
+      }
+    }
+
+    // 5. === 资产增值 (低频) ===
+    if (Math.random() < 0.05) {
+      await this.doWealthManagement();
+    }
+  }
+
+  // --- 财富管理子程序 ---
+  async doWealthManagement() {
+    // 1. 狗狗管理
+    if (!this.hasDog && this.gold > 600) {
+      await this.buyDog();
+      return;
+    }
+
+    if (this.hasDog && this.dogActiveUntil) {
+      const timeLeft = this.dogActiveUntil.getTime() - Date.now();
+      if (timeLeft < 60 * 1000 && this.gold > 100) {
+        await this.feedDog();
+        return;
+      }
+    }
+
+    // 2. 扩建
+    const isFull = this.lands.every(l => l.status !== 'empty');
+    if (isFull && this.gold > 2500) {
+      const success = await this.expandLand();
+      if (success) return;
+    }
+
+    // 3. 升级土地
+    if (this.gold > 3500) {
+      const normalLand = this.lands.find(l => l.landType === 'normal');
+      if (normalLand) {
+        await this.upgradeLand(normalLand.position);
+        return;
       }
     }
   }
@@ -256,6 +367,7 @@ class FarmAgent {
   }
 }
 
+
 // ================= 主流程 =================
 
 async function botWorker(agent) {
@@ -269,52 +381,108 @@ async function botWorker(agent) {
   }
 }
 
-async function main() {
-  console.log(`=== 1. 初始化: 尝试注册 ${PLAYERS_COUNT} 个 Bot ===`);
-  const bots = [];
-
-  let attempts = 0;
-  // 循环直到注册够人数，或者尝试太多次
-  while (bots.length < PLAYERS_COUNT && attempts < PLAYERS_COUNT * 2) {
-    attempts++;
-    // 使用唯一命名
-    const botName = generateUniqueName(bots.length + 1);
-    const bot = new FarmAgent(botName);
-
-    // 注册，失败则会打印日志
-    if (await bot.register()) {
-      bots.push(bot);
+async function loadBotsFromDB() {
+  console.log(`=== 1. 初始化: 从数据库直接加载 Bot (Direct DB) ===`);
+  let client;
+  try {
+    let pg;
+    try {
+      pg = require('./backend/node_modules/pg');
+    } catch (e) {
+      try {
+        pg = require('pg');
+      } catch (e2) {
+        console.error("❌ 无法加载 'pg' 模块。请确保在 backend 目录下安装了 pg (npm install pg)");
+        process.exit(1);
+      }
     }
 
-    // 短暂间隔防止请求过快
-    await sleep(100);
+    const { Client } = pg;
+    const connectionString = "postgresql://farm_user:farm_password_2024@localhost:5432/qq_farm?schema=public";
+
+    client = new Client({ connectionString });
+    await client.connect();
+
+    const res = await client.query(`
+            SELECT id, name, "apiKey", level, gold, lands 
+            FROM "Player" 
+            ORDER BY "createdAt" DESC 
+            LIMIT ${PLAYERS_COUNT}
+        `);
+
+    const players = res.rows;
+    console.log(`✅ 从数据库加载了 ${players.length} 个玩家`);
+
+    return players.map(p => {
+      const agent = new FarmAgent(p.name);
+      agent.playerId = p.id;
+      agent.apiKey = p.apiKey;
+      agent.gold = p.gold;
+      agent.level = p.level;
+      agent.lands = p.lands || [];
+      return agent;
+    });
+
+  } catch (e) {
+    console.error("❌ 数据库查询失败:", e);
+    return [];
+  } finally {
+    if (client) await client.end();
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  const loadFromDB = args.includes('--load-db');
+
+  // [修改] 先尝试获取配置
+  const configLoaded = await fetchGameConfig();
+  if (!configLoaded || CROPS_CONFIG.length === 0) {
+    console.warn("⚠️ 警告: 无法加载作物配置，Bot 将无法进行种植操作！");
   }
 
-  if (bots.length < PLAYERS_COUNT) {
-    console.warn(`\n⚠️ 警告: 只注册成功了 ${bots.length} 个 Bot (目标 ${PLAYERS_COUNT})`);
+  let bots = [];
+
+  if (loadFromDB) {
+    bots = await loadBotsFromDB();
+    if (bots.length === 0) {
+      console.error("没有加载到任何 Bot，退出。");
+      return;
+    }
   } else {
-    console.log(`\n✅ 成功注册全部 ${bots.length} 个 Bot`);
+    console.log(`=== 1. 初始化: 尝试注册 ${PLAYERS_COUNT} 个 Bot ===`);
+
+    let attempts = 0;
+    while (bots.length < PLAYERS_COUNT && attempts < PLAYERS_COUNT * 2) {
+      attempts++;
+      const botName = generateUniqueName(bots.length + 1);
+      const bot = new FarmAgent(botName);
+
+      if (await bot.register()) {
+        bots.push(bot);
+      }
+      await sleep(100);
+    }
+
+    if (bots.length < PLAYERS_COUNT) {
+      console.warn(`\n⚠️ 警告: 只注册成功了 ${bots.length} 个 Bot (目标 ${PLAYERS_COUNT})`);
+    } else {
+      console.log(`\n✅ 成功注册全部 ${bots.length} 个 Bot`);
+    }
+
+    console.log(`\n=== 2. 构建社交网络 (全员互粉) ===`);
+    for (let i = 0; i < bots.length; i++) {
+      const me = bots[i];
+      const others = bots.filter(b => b.playerId !== me.playerId);
+      process.stdout.write(`\r[${me.name}] 正在关注 ${others.length} 人...`);
+      await Promise.all(others.map(other => me.follow(other.playerId)));
+    }
+    console.log(`\n✅ 社交网络构建完成！\n`);
   }
-
-  console.log(`\n=== 2. 构建社交网络 (全员互粉) ===`);
-  for (let i = 0; i < bots.length; i++) {
-    const me = bots[i];
-    const others = bots.filter(b => b.playerId !== me.playerId);
-
-    process.stdout.write(`\r[${me.name}] 正在关注 ${others.length} 人...`);
-
-    // 并发关注所有人，提高速度
-    await Promise.all(others.map(other => me.follow(other.playerId)));
-  }
-  console.log(`\n✅ 社交网络构建完成！\n`);
 
   console.log(`=== 3. 准备开始: 所有人同步好友列表 ===`);
-  // 这一步很关键：确保在游戏开始前，每个人的 friends 列表都是满的
   await Promise.all(bots.map(bot => {
-    return bot.fetchFriends().then(() => {
-      // 可选：打印一下确认
-      // console.log(`  > ${bot.name} 好友数: ${bot.friends.length}`);
-    });
+    return bot.fetchFriends();
   }));
   console.log(`✅ 好友列表同步完成。\n`);
 

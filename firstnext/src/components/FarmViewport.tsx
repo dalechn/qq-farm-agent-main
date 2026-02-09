@@ -11,6 +11,7 @@ import {
   X,
   RotateCw, // [Modify] Change RefreshCw to RotateCw
   Skull,
+  Activity, // [New]
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type Player, type FollowUser, publicApi } from "@/lib/api";
@@ -91,7 +92,7 @@ function PanelHeader({
 function MiniStat({ label, value, color, bg }: { label: string; value: number | string; color: string; bg: string }) {
   return (
     <div className={`flex items-center gap-2 px-2 py-1 border border-b-2 border-r-2 border-black/20 ${bg}`}>
-      <span className="text-[8px] text-stone-900 font-bold uppercase tracking-wider">{label}</span>
+      <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">{label}</span>
       <span className={`text-xs font-mono font-bold ${color} drop-shadow-sm`}>{value}</span>
     </div>
   );
@@ -105,6 +106,7 @@ interface FarmViewportProps {
   onRefresh?: () => void;
   isRefreshing?: boolean; // [New]
   notFound?: boolean; // [新增]
+  onLiteRefresh?: () => void; // [新增]
 }
 
 const TOTAL_LAND_SLOTS = 18;
@@ -116,7 +118,8 @@ export function FarmViewport({
   showOnMobile,
   onRefresh,
   isRefreshing = false, // [New] destructure with default
-  notFound = false // [新增]
+  notFound = false, // [新增]
+  onLiteRefresh // [新增] 解构出该属性
 }: FarmViewportProps) {
   const router = useRouter();
   const { myPlayer } = useGame();
@@ -125,6 +128,7 @@ export function FarmViewport({
   const isLoading = isSearching || isPlayerLoading;
   const [showDebugSidebar, setShowDebugSidebar] = useState(false);
   const [isUserListSidebarOpen, setIsUserListSidebarOpen] = useState(false);
+  const [isStatsOpen, setIsStatsOpen] = useState(false); // [New]
   const [userListSidebarType, setUserListSidebarType] = useState<'following' | 'followers'>('following');
   const [userListPlayerId, setUserListPlayerId] = useState<string>('');
   const debugMode = false;
@@ -177,7 +181,7 @@ export function FarmViewport({
       // const displayTime = `${Math.floor(randomMin / 60)}h ${randomMin % 60}m`;
       // secConfig = { value: displayTime, color: "text-cyan-200", bg: "bg-cyan-950" };
     } else if (isDogActive) {
-      secConfig = { value: remainingTime || "0m", color: "text-cyan-200", bg: "bg-cyan-950" };
+      secConfig = { value: remainingTime || "0m", color: "text-green-200", bg: "bg-green-950/40" };
     } else {
       secConfig = { value: "LOW", color: "text-orange-200", bg: "bg-orange-950" };
     }
@@ -371,31 +375,49 @@ export function FarmViewport({
           >
 
             {/* 顶部统计 */}
-            <div className="flex items-center justify-between mb-4 relative z-10 overflow-x-auto pb-2 sm:pb-0">
+            <div className="flex items-center justify-between mb-4 relative z-30">
               <div className="flex items-center gap-2 text-xs font-bold text-[#78716c] uppercase tracking-widest font-mono flex-shrink-0">
                 <Leaf className="w-3 h-3" />
                 <span>{t('viewport.fieldMatrix')}</span>
               </div>
 
-              <div className="flex gap-2 flex-nowrap">
+              <div className="flex items-center gap-2">
 
-                <MiniStat label={t('status.idle')} value={selectedPlayer.lands?.filter((l) => l.status === "empty").length || 0} color="text-stone-300" bg="bg-stone-700" />
-                <MiniStat label={t('status.grow')} value={selectedPlayer.lands?.filter((l) => l.status === "planted").length || 0} color="text-blue-200" bg="bg-blue-900" />
-                <MiniStat
-                  label={t('status.care')}
-                  value={selectedPlayer.lands?.filter((l) => l.status !== "withered" && (l.hasWeeds || l.hasPests || l.needsWater)).length || 0}
-                  color="text-yellow-200"
-                  bg="bg-yellow-900"
-                />
-                <MiniStat label={t('status.ripe')} value={selectedPlayer.lands?.filter((l) => l.status === "harvestable").length || 0} color="text-green-200" bg="bg-green-900" />
-                <MiniStat label={t('status.dead')} value={selectedPlayer.lands?.filter((l) => l.status === "withered").length || 0} color="text-red-200" bg="bg-red-900" />
+                <div className="relative">
+                  <button
+                    onClick={() => setIsStatsOpen(!isStatsOpen)}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono border transition-all shadow-sm ${isStatsOpen
+                      ? 'bg-stone-800 border-orange-500 text-orange-500'
+                      : 'bg-[#292524] border-stone-700 text-stone-400 hover:text-stone-200 hover:border-stone-500'
+                      }`}
+                  >
+                    <Activity className="w-3.5 h-3.5" />
+                    <span className="font-bold tracking-wider">STATUS</span>
+                  </button>
 
-                <MiniStat
-                  label={t('status.sec')}
-                  value={secConfig.value}
-                  color={secConfig.color}
-                  bg={secConfig.bg}
-                />
+                  {isStatsOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsStatsOpen(false)} />
+                      <div className="absolute right-0 top-full mt-2 z-50 flex flex-col gap-1.5 p-2 bg-stone-900 border border-stone-600 shadow-2xl min-w-[160px] animate-in fade-in zoom-in-95 slide-in-from-top-2 duration-200">
+                        <MiniStat label={t('status.idle')} value={selectedPlayer.lands?.filter((l) => l.status === "empty").length || 0} color="text-stone-400" bg="bg-stone-500/10" />
+                        <MiniStat label={t('status.grow')} value={selectedPlayer.lands?.filter((l) => l.status === "planted").length || 0} color="text-blue-400" bg="bg-blue-500/10" />
+                        <MiniStat
+                          label={t('status.care')}
+                          value={selectedPlayer.lands?.filter((l) => l.status !== "withered" && (l.hasWeeds || l.hasPests || l.needsWater)).length || 0}
+                          color="text-yellow-400"
+                          bg="bg-yellow-500/10"
+                        />
+                        <MiniStat label={t('status.ripe')} value={selectedPlayer.lands?.filter((l) => l.status === "harvestable").length || 0} color="text-green-400" bg="bg-green-500/10" />
+                        <MiniStat label={t('status.dead')} value={selectedPlayer.lands?.filter((l) => l.status === "withered").length || 0} color="text-red-400" bg="bg-red-500/10" />
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                <div className={`flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono border shadow-sm ${secConfig.bg} border-stone-700`}>
+                  <span className="text-stone-400 font-bold uppercase tracking-wider">{t('status.sec')}</span>
+                  <span className={`font-bold ${secConfig.color}`}>{secConfig.value}</span>
+                </div>
               </div>
             </div>
 
@@ -403,7 +425,7 @@ export function FarmViewport({
             <div className="relative max-w-2xl mx-auto pb-10">
               <PatrolDog isActive={isDogActive} isDebug={debugMode} />
 
-              <div className="grid grid-cols-3 gap-6 relative z-10">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4 md:gap-6 relative z-10">
                 {Array.from({ length: TOTAL_LAND_SLOTS }).map((_, index) => {
                   const land = selectedPlayer.lands?.find(l => l.position === index);
                   return (
@@ -411,7 +433,8 @@ export function FarmViewport({
                       key={land ? land.id : `locked-${index}`}
                       land={land}
                       locked={!land}
-                      onUpdate={onRefresh}
+                      // [修改] 优先使用 onLiteRefresh，如果没有则回退到 onRefresh
+                      onUpdate={onLiteRefresh || onRefresh}
                       isOwner={isOwner}
                       ownerId={selectedPlayer.id}
                     />

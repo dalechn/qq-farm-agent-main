@@ -127,9 +127,9 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
             `}
             role="alert"
         >
-            <div className="pt-0.5">
+            {/* <div className="pt-0.5">
                 {getIcon()}
-            </div>
+            </div> */}
 
             <div className="flex-1 min-w-0 pt-0">
                 {/* [修改] 标题缩小到 9px，去掉了 margin-bottom，改为 leading-none 紧贴 */}

@@ -197,7 +197,7 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
     if (activeLogTab === 'agent' && selectedPlayer) {
       fetchAgentLogs(selectedPlayer.id);
     }
-  }, [activeLogTab, selectedPlayer]);
+  }, [activeLogTab, selectedPlayer?.id]);
 
   // 全局刷新逻辑 (右侧日志栏的刷新按钮)
   const handleRefreshLogs = async () => {
@@ -333,6 +333,7 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
         onRefresh={handleManualRefresh} // [修改] 传入手动刷新
         isRefreshing={isPlayerRefreshing} // [New] Pass refresh state
         notFound={notFound} // [新增]
+        onLiteRefresh={handleBackgroundRefresh} // [新增] 将轻量级刷新函数传下去
       />
 
       {/* 3. PC 端日志面板 */}

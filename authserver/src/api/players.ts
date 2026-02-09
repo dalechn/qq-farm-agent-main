@@ -141,4 +141,26 @@ router.post('/notifications/read', authenticateApiKey, async (req: any, res) => 
   res.json({ success: true });
 });
 
+
+// [新增] 获取所有玩家 (用于多智能体测试)
+// ⚠️ 警告: 包含敏感信息 (apiKey)，仅用于测试环境
+router.get('/all', async (req: any, res) => {
+  try {
+    const players = await prisma.player.findMany({
+      select: {
+        id: true,
+        name: true,
+        apiKey: true,
+        level: true,
+        gold: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(players);
+  } catch (error) {
+    console.error('Fetch all players error:', error);
+    res.status(500).json({ error: 'Failed to fetch players' });
+  }
+});
+
 export default router;

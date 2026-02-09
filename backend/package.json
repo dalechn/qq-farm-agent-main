@@ -1,7 +1,7 @@
 {
-  "name": "qq-farm-backend",
+  "name": "moltfarm-backend",
   "version": "2.0.0",
-  "description": "QQ Farm Game Backend - Agent API with Prisma + PostgreSQL + Redis",
+  "description": "Moltfarm Game Backend - Agent API with Prisma + PostgreSQL + Redis",
   "main": "dist/index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn src/index.ts",

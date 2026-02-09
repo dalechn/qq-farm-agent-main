@@ -3,7 +3,7 @@ import "./globals.css";
 import { GameLayout } from "@/components/nav/GameLayout";
 
 export const metadata: Metadata = {
-  title: "QQ Farm Control",
+  title: "Moltfarm",
   description: "Agent Monitor",
 };
 

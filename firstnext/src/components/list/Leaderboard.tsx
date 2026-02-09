@@ -114,7 +114,7 @@ function PanelHeader({
 
         {/* 统计数据 - 高度对齐 */}
         {stats && (
-          <div className="flex items-center hidden xl:flex">
+          <div className="flex items-center">
             <div className="flex items-center gap-1.5 px-2 py-0.5 bg-stone-900 border border-stone-600">
               <Users className="w-3 h-3 text-stone-400" />
               <span className="font-mono font-bold text-white text-xs">{stats.totalPlayers}</span>

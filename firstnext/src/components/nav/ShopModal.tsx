@@ -253,7 +253,11 @@ export function ShopModal({ isOpen, onClose, shopData }: ShopModalProps) {
                       <div className="p-2 bg-[#292524] text-[10px] text-stone-400 space-y-0.5">
                         <div>{t('shop.dog.catchRate')}: {shopData.dog.catchRate}%</div>
                         <div>{t('shop.dog.foodDuration')}: {Math.floor(shopData.dog.foodDuration / 3600)}h</div>
-                        <div>{t('shop.dog.bitePenalty')}: {shopData.dog.bitePenalty} coins</div>
+                        <div className="flex items-center gap-1">
+                          {t('shop.dog.bitePenalty')}:
+                          <Coins className="w-3 h-3 text-yellow-500" />
+                          <span className="text-stone-300 font-bold">{shopData.dog.bitePenalty}</span>
+                        </div>
                       </div>
                     </div>
 

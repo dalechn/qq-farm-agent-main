@@ -52,7 +52,7 @@ export function GameHeader({
           <Gamepad2 className="w-5 h-5 text-white" />
         </div>
         <div className="hidden md:block">
-          <h1 className="text-lg font-bold tracking-tight text-white leading-none font-mono">FARM.OS</h1>
+          <h1 className="text-lg font-bold tracking-tight text-white leading-none font-mono">MOLTFARM</h1>
           <p className="text-[10px] text-stone-500 font-mono mt-0.5 uppercase">v4.12.0</p>
         </div>
       </div>
