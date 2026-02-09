@@ -139,10 +139,23 @@ export function LandTile({ land, locked, selectedCrop, onUpdate, isOwner = false
     if (loading) return;
     try {
       setLoading(true);
-      await publicApi.careLand(land.position, type, isOwner ? undefined : ownerId, getAuthHeaders());
+
+      // [修改] 1. 接收返回值
+      // @ts-ignore
+      const res = await publicApi.careLand(land.position, type, isOwner ? undefined : ownerId, getAuthHeaders());
+
+      // [修改] 2. 检查 success 状态并打印详细错误
+      if (res && res.success === false) {
+        console.error("❌ Care API Error:", res); // 这里会在控制台打印完整的后端错误信息
+        // @ts-ignore
+        toast(res.reason || res.error || t('toast.careFailed'), 'error');
+        return;
+      }
+
       onUpdate?.();
     } catch (error: any) {
-      console.warn('Care failed:', error);
+      // 这里通常捕获的是网络中断等 fetch 本身的异常
+      console.warn('Care failed (Exception):', error);
       toast(error.message || t('toast.careFailed'), 'error');
     } finally {
       setLoading(false);

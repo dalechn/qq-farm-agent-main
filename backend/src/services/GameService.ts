@@ -22,19 +22,11 @@ export class GameService {
 
   private static async syncPlayerRank(playerId: string) {
     try {
-      // 从 Redis Hash 中读取最新的 gold 和 level
-      const [goldStr, levelStr] = await redisClient.hmGet(KEYS.PLAYER(playerId), ['gold', 'level']);
-
-      if (goldStr) {
-        await updateLeaderboard('gold', playerId, Number(goldStr));
-      }
-      if (levelStr) {
-        await updateLeaderboard('level', playerId, Number(levelStr));
-      }
-      // 每次同步都视为一次活跃
-      await updateLeaderboard('active', playerId, Date.now());
+      // 优化：不再直接写 ZSET，而是把 ID 丢进 Set 去重
+      // SADD 是 O(1) 操作，极快，且多次调用只会存一次
+      await redisClient.sAdd(KEYS.LEADERBOARD_DIRTY, playerId);
     } catch (e) {
-      console.error(`Failed to sync rank for ${playerId}`, e);
+      console.error(`Failed to mark rank dirty for ${playerId}`, e);
     }
   }
 
@@ -125,7 +117,7 @@ export class GameService {
       if (saved) {
         landData.status = saved.status || LandStatus.EMPTY;
         landData.landType = saved.landType || 'normal';
-        landData.cropId = saved.cropType || '';
+        landData.cropType = saved.cropType || '';
         landData.matureAt = saved.matureAt?.toString() || '0';
         landData.plantedAt = saved.plantedAt?.toString() || '0';
         landData.remainingHarvests = (saved.remainingHarvests || 0).toString();
@@ -150,7 +142,20 @@ export class GameService {
 
   static async getPlayerState(playerId: string) {
     await this.ensurePlayerLoaded(playerId);
-    await this.tryTriggerDisasters(playerId);
+    // 优化：避免每次查询都触发灾难检查 Lua 脚本
+    // 先轻量级读取上次检查时间 (HGET 是 O(1) 操作，非常快)
+    const lastCheckStr = await redisClient.hGet(KEYS.PLAYER(playerId), 'lastDisasterCheck');
+    const lastCheck = parseInt(lastCheckStr || '0');
+
+    // 使用配置中的间隔时间 (如果没有配置则默认 60秒)
+    // 注意：GAME_CONFIG.DISASTER_CHECK_INTERVAL 单位通常是毫秒
+    const checkInterval = GAME_CONFIG.DISASTER_CHECK_INTERVAL || 60000;
+
+    if (Date.now() - lastCheck > checkInterval) {
+      // 只有间隔超过设定时间，才真正去调用 Lua 脚本
+      // Lua 脚本内部会更新 lastDisasterCheck 字段为当前时间
+      await this.tryTriggerDisasters(playerId);
+    }
 
     const pipeline = redisClient.multi();
     pipeline.hGetAll(KEYS.PLAYER(playerId));

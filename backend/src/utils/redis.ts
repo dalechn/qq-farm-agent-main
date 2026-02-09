@@ -61,6 +61,9 @@ export const KEYS = {
   // [原有] Game Stream Key
   MQ_GAME_EVENTS: 'mq:game:events',
 
+  // [新增] 脏数据集合 Key
+  LEADERBOARD_DIRTY: 'leaderboard:dirty_players',
+
 
 
   // [新增] Consumer Group 名称 (复用或新建)

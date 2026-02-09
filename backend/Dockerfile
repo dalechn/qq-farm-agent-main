@@ -1,14 +1,16 @@
-# 使用轻量级的 Node.js 镜像
-FROM node:22-alpine
+# backend/Dockerfile
 
-# 安装 pnpm
-RUN npm install -g pnpm
+# 使用轻量级的 Node.js 镜像
+FROM node:20-alpine
+
+# 安装 pnpm 和 pm2
+RUN npm install -g pnpm pm2
 
 # 设置工作目录
 WORKDIR /app
 
 # 复制依赖定义文件
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* ecosystem.config.js ./
 # 复制 Prisma Schema 以便生成 Client
 COPY prisma ./prisma/
 
@@ -24,17 +26,18 @@ COPY . .
 # 执行编译（将 ts 转换为 dist 目录下的 js）
 RUN pnpm build
 
-# 暴露端口（游戏服 3001，认证服 3002）
-EXPOSE 3001 3002
+# 暴露端口（游戏服 3001）
+EXPOSE 3001
 
-# 使用 Shell 脚本逻辑根据 SERVICE_NAME 启动对应的服务
-# 1. 运行 prisma db push 确保数据库结构同步
-# 2. 根据环境变量判断启动游戏主服、认证服或 Worker
-CMD ["sh", "-c", "npx prisma db push && \
-    if [ \"$SERVICE_NAME\" = \"worker-logs\" ]; then \
-        node dist/worker-logs.js; \
-    elif [ \"$SERVICE_NAME\" = \"worker-sync\" ]; then \
-        node dist/worker-sync.js; \
-    else \
-        node dist/index.js; \
-    fi"]
+# [关键修改] 使用 pm2-runtime 启动，根据 SERVICE_NAME 决定启动哪个应用
+CMD ["sh", "-c", "if [ \"$SERVICE_NAME\" = \"game\" ] || [ -z \"$SERVICE_NAME\" ]; then npx prisma db push; fi && \
+    case \"$SERVICE_NAME\" in \
+        \"worker-logs\") \
+            pm2-runtime start ecosystem.config.js --only farm-worker-logs ;; \
+        \"worker-sync\") \
+            pm2-runtime start ecosystem.config.js --only farm-worker-sync ;; \
+        \"worker-leaderboard\") \
+            pm2-runtime start ecosystem.config.js --only farm-worker-leaderboard ;; \
+        *) \
+            pm2-runtime start ecosystem.config.js --only farm-backend ;; \
+    esac"]

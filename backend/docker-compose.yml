@@ -10,7 +10,8 @@ services:
       NODE_ENV: production
       SERVICE_NAME: game
       PORT: 3001
-      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
+      # 游戏服连接数给多一点
+      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public&connection_limit=10
       REDIS_URL: redis://redis:6379
       CLICKHOUSE_HOST: http://clickhouse:8123
     ports:
@@ -35,7 +36,8 @@ services:
       NODE_ENV: production
       SERVICE_NAME: worker-sync
       HOSTNAME: worker-sync
-      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
+      # Worker 连接数少一点
+      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public&connection_limit=5
       REDIS_URL: redis://redis:6379
     networks:
       - farm-network
@@ -50,9 +52,26 @@ services:
       NODE_ENV: production
       SERVICE_NAME: worker-logs
       HOSTNAME: worker-logs
-      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public
+      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public&connection_limit=5
       REDIS_URL: redis://redis:6379
       CLICKHOUSE_HOST: http://clickhouse:8123
+    networks:
+      - farm-network
+    restart: unless-stopped
+
+  # [新增] 排行榜 Worker
+  worker-leaderboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qq-farm-worker-leaderboard
+    environment:
+      NODE_ENV: production
+      SERVICE_NAME: worker-leaderboard
+      HOSTNAME: worker-leaderboard
+      # 排行榜主要操作 Redis，DB 连接数可以很小
+      DATABASE_URL: postgresql://farm_user:farm_password_2024@postgres:5432/qq_farm?schema=public&connection_limit=3
+      REDIS_URL: redis://redis:6379
     networks:
       - farm-network
     restart: unless-stopped
