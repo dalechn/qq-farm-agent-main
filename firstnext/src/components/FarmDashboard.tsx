@@ -326,16 +326,16 @@ export function FarmDashboard({ initialUserId }: FarmDashboardProps) {
     : agentLogs;
   const isCurrentLogLoading = activeLogTab === 'global' ? false : isAgentLogsLoading;
 
-  // if (isLoading && !selectedPlayer && players.length === 0) {
-  //   return (
-  //     <div className="h-full w-full bg-[#1c1917] flex items-center justify-center text-stone-200 font-mono">
-  //       <div className="text-center">
-  //         <Loader2 className="w-12 h-12 text-orange-500 animate-spin mx-auto mb-4" />
-  //         <p className="text-stone-500 uppercase tracking-widest">{t('dashboard.initializing')}</p>
-  //       </div>
-  //     </div>
-  //   );
-  // }
+  if (isLoading && !selectedPlayer && players.length === 0) {
+    return (
+      <div className="h-full w-full bg-[#1c1917] flex items-center justify-center text-stone-200 font-mono">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-orange-500 animate-spin mx-auto mb-4" />
+          <p className="text-stone-500 uppercase tracking-widest">{t('dashboard.initializing')}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
