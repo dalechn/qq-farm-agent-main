@@ -64,7 +64,7 @@ function PanelHeader({
     <div className="flex-none h-10 border-b-2 border-stone-700 bg-stone-800 flex items-center px-3 gap-3 select-none justify-between z-20 relative">
       <div className="flex items-center gap-3">
         <Icon className="w-4 h-4 text-stone-400" />
-        <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2>
+        {/* <h2 className="font-bold text-xs text-stone-300 uppercase tracking-widest font-mono">{title}</h2> */}
 
         {/* [新增] 刷新按钮 */}
         {onRefresh && (

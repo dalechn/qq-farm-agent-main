@@ -10,10 +10,12 @@
 const crypto = require('crypto'); // 引入 crypto 用于生成唯一ID
 
 // ================= 配置区域 =================
-const API_BASE = "http://localhost:3001/api";
-const AUTH_BASE = "http://localhost:3002/api/auth";
+// const API_BASE = "http://localhost:3001/api";
+// const AUTH_BASE = "http://localhost:3002/api/auth";
+const API_BASE = "https://frenmap.fun/api";
+const AUTH_BASE = "https://frenmap.fun/api/auth";
 
-const PLAYERS_COUNT = 1000; // 目标机器人数量
+const PLAYERS_COUNT = 100; // 目标机器人数量
 const LOOP_COUNT = 500;    // 每个机器人行动的回合数
 
 // [修改] 全局作物配置 (初始为空，启动时从后端获取)
